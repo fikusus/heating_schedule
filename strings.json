@@ -1,0 +1,147 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Heating Schedule",
+        "description": "Add the heating scheduler. You can configure temperatures, times, devices and boiler control afterwards under Configure."
+      }
+    },
+    "abort": {
+      "already_configured": "Heating Schedule is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Heating Schedule",
+        "description": "Choose what to configure.",
+        "menu_options": {
+          "globals": "Temperatures, times and transition",
+          "add_device": "Add climate device",
+          "edit_devices": "Edit / remove device",
+          "boiler_settings": "Boiler: power & switch entities",
+          "add_boiler_room": "Boiler: add room sensor",
+          "edit_boiler_rooms": "Boiler: edit / remove room"
+        }
+      },
+      "globals": {
+        "title": "Global settings",
+        "description": "Targets, schedule times and the duration of the smooth-transition phase.",
+        "data": {
+          "day_temp": "Day temperature",
+          "night_temp": "Night temperature",
+          "bedroom_night_temp": "Bedroom night temperature",
+          "transition_duration_min": "Transition duration (minutes)",
+          "day_to_night_time": "Day → Night",
+          "night_to_day_time": "Night → Day",
+          "bedroom_day_to_night_time": "Bedroom Day → Night",
+          "bedroom_night_to_day_time": "Bedroom Night → Day"
+        }
+      },
+      "add_device": {
+        "title": "Add climate device",
+        "description": "Pick a climate.* entity and configure its offset and bedroom flag.",
+        "data": {
+          "entity_id": "Climate entity",
+          "offset": "Offset (°C)",
+          "is_bedroom": "Bedroom"
+        }
+      },
+      "edit_devices": {
+        "title": "Edit device",
+        "description": "Pick a device to edit or remove.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "edit_one": {
+        "title": "Edit {entity_id}",
+        "description": "Change offset, bedroom flag, or remove.",
+        "data": {
+          "offset": "Offset (°C)",
+          "is_bedroom": "Bedroom",
+          "remove": "Remove this device"
+        }
+      },
+      "boiler_settings": {
+        "title": "Boiler control",
+        "description": "Pick the number entity that controls boiler power (1..100) and the switch entity that turns the boiler on/off. Leave blank to skip writing to that target.",
+        "data": {
+          "boiler_power_entity": "Power-level number entity",
+          "boiler_switch_entity": "On/off switch entity"
+        }
+      },
+      "add_boiler_room": {
+        "title": "Add boiler room sensor",
+        "description": "Pick a temperature sensor and mark whether it represents the bedroom (uses the bedroom target).",
+        "data": {
+          "sensor": "Temperature sensor",
+          "is_bedroom": "Bedroom"
+        }
+      },
+      "edit_boiler_rooms": {
+        "title": "Edit boiler room",
+        "description": "Pick a room to edit or remove.",
+        "data": {
+          "room": "Room sensor"
+        }
+      },
+      "edit_boiler_room": {
+        "title": "Edit {sensor}",
+        "description": "Change the bedroom flag or remove this room.",
+        "data": {
+          "is_bedroom": "Bedroom",
+          "remove": "Remove this room"
+        }
+      }
+    },
+    "abort": {
+      "no_devices": "No devices configured yet. Use 'Add climate device'.",
+      "device_not_found": "Selected device no longer exists.",
+      "no_rooms": "No boiler rooms configured yet. Use 'Boiler: add room sensor'.",
+      "room_not_found": "Selected room no longer exists."
+    }
+  },
+  "entity": {
+    "number": {
+      "day_temp": { "name": "Day Temp" },
+      "night_temp": { "name": "Night Temp" },
+      "bedroom_night_temp": { "name": "Bedroom Night Temp" },
+      "transition_duration_min": { "name": "Transition Duration" }
+    },
+    "time": {
+      "day_to_night_time": { "name": "Day → Night" },
+      "night_to_day_time": { "name": "Night → Day" },
+      "bedroom_day_to_night_time": { "name": "Bedroom Day → Night" },
+      "bedroom_night_to_day_time": { "name": "Bedroom Night → Day" }
+    },
+    "sensor": {
+      "current_main_phase": {
+        "name": "Main Phase",
+        "state": {
+          "day": "Day",
+          "transition_to_night": "Transition to night",
+          "night": "Night",
+          "transition_to_day": "Transition to day"
+        }
+      },
+      "current_bedroom_phase": {
+        "name": "Bedroom Phase",
+        "state": {
+          "day": "Day",
+          "transition_to_night": "Transition to night",
+          "night": "Night",
+          "transition_to_day": "Transition to day"
+        }
+      },
+      "current_main_target": { "name": "Main Target" },
+      "current_bedroom_target": { "name": "Bedroom Target" },
+      "boiler_max_diff": { "name": "Boiler Max Diff" },
+      "boiler_power_target": { "name": "Boiler Power Target" }
+    },
+    "switch": {
+      "boiler_enabled": { "name": "Boiler Control" },
+      "boiler_summer_mode": { "name": "Boiler Summer Mode" }
+    }
+  }
+}

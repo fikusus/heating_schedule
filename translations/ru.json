@@ -1,0 +1,147 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Расписание отопления",
+        "description": "Добавить планировщик отопления. Температуры, времена, устройства и управление котлом настраиваются позже в разделе «Настроить»."
+      }
+    },
+    "abort": {
+      "already_configured": "Расписание отопления уже настроено."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Расписание отопления",
+        "description": "Что настроить?",
+        "menu_options": {
+          "globals": "Температуры, времена и переход",
+          "add_device": "Добавить климат-устройство",
+          "edit_devices": "Изменить / удалить устройство",
+          "boiler_settings": "Котёл: число мощности и переключатель",
+          "add_boiler_room": "Котёл: добавить комнату",
+          "edit_boiler_rooms": "Котёл: изменить / удалить комнату"
+        }
+      },
+      "globals": {
+        "title": "Общие настройки",
+        "description": "Целевые температуры, времена переключения и длительность плавного перехода.",
+        "data": {
+          "day_temp": "Температура днём",
+          "night_temp": "Температура ночью",
+          "bedroom_night_temp": "Температура ночью в спальне",
+          "transition_duration_min": "Длительность перехода (минуты)",
+          "day_to_night_time": "День → Ночь",
+          "night_to_day_time": "Ночь → День",
+          "bedroom_day_to_night_time": "Спальня День → Ночь",
+          "bedroom_night_to_day_time": "Спальня Ночь → День"
+        }
+      },
+      "add_device": {
+        "title": "Добавить климат-устройство",
+        "description": "Выберите climate.* и задайте оффсет и флаг спальни.",
+        "data": {
+          "entity_id": "Климат-сущность",
+          "offset": "Оффсет (°C)",
+          "is_bedroom": "Спальня"
+        }
+      },
+      "edit_devices": {
+        "title": "Изменить устройство",
+        "description": "Выберите устройство для изменения или удаления.",
+        "data": {
+          "device": "Устройство"
+        }
+      },
+      "edit_one": {
+        "title": "Изменить {entity_id}",
+        "description": "Измените оффсет, флаг спальни или удалите устройство.",
+        "data": {
+          "offset": "Оффсет (°C)",
+          "is_bedroom": "Спальня",
+          "remove": "Удалить устройство"
+        }
+      },
+      "boiler_settings": {
+        "title": "Управление котлом",
+        "description": "Выберите number-сущность мощности котла (1..100) и switch-сущность вкл/выкл. Оставьте пустым чтобы не писать в эту цель.",
+        "data": {
+          "boiler_power_entity": "Сущность number — мощность",
+          "boiler_switch_entity": "Сущность switch — вкл/выкл"
+        }
+      },
+      "add_boiler_room": {
+        "title": "Добавить комнату",
+        "description": "Выберите датчик температуры и пометьте является ли это спальней (использует целевую спальни).",
+        "data": {
+          "sensor": "Датчик температуры",
+          "is_bedroom": "Спальня"
+        }
+      },
+      "edit_boiler_rooms": {
+        "title": "Изменить комнату",
+        "description": "Выберите комнату для изменения или удаления.",
+        "data": {
+          "room": "Комната"
+        }
+      },
+      "edit_boiler_room": {
+        "title": "Изменить {sensor}",
+        "description": "Измените флаг спальни или удалите комнату.",
+        "data": {
+          "is_bedroom": "Спальня",
+          "remove": "Удалить комнату"
+        }
+      }
+    },
+    "abort": {
+      "no_devices": "Нет добавленных устройств. Используйте «Добавить климат-устройство».",
+      "device_not_found": "Выбранное устройство больше не существует.",
+      "no_rooms": "Нет добавленных комнат для котла. Используйте «Котёл: добавить комнату».",
+      "room_not_found": "Выбранная комната больше не существует."
+    }
+  },
+  "entity": {
+    "number": {
+      "day_temp": { "name": "Температура днём" },
+      "night_temp": { "name": "Температура ночью" },
+      "bedroom_night_temp": { "name": "Температура ночью (спальня)" },
+      "transition_duration_min": { "name": "Длительность перехода" }
+    },
+    "time": {
+      "day_to_night_time": { "name": "День → Ночь" },
+      "night_to_day_time": { "name": "Ночь → День" },
+      "bedroom_day_to_night_time": { "name": "Спальня День → Ночь" },
+      "bedroom_night_to_day_time": { "name": "Спальня Ночь → День" }
+    },
+    "sensor": {
+      "current_main_phase": {
+        "name": "Фаза (общая)",
+        "state": {
+          "day": "День",
+          "transition_to_night": "Переход к ночи",
+          "night": "Ночь",
+          "transition_to_day": "Переход к дню"
+        }
+      },
+      "current_bedroom_phase": {
+        "name": "Фаза (спальня)",
+        "state": {
+          "day": "День",
+          "transition_to_night": "Переход к ночи",
+          "night": "Ночь",
+          "transition_to_day": "Переход к дню"
+        }
+      },
+      "current_main_target": { "name": "Целевая (общая)" },
+      "current_bedroom_target": { "name": "Целевая (спальня)" },
+      "boiler_max_diff": { "name": "Котёл: макс. дифференц" },
+      "boiler_power_target": { "name": "Котёл: целевая мощность" }
+    },
+    "switch": {
+      "boiler_enabled": { "name": "Котёл: управление" },
+      "boiler_summer_mode": { "name": "Котёл: летний режим" }
+    }
+  }
+}
