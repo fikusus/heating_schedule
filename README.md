@@ -11,7 +11,8 @@ boiler control.
 - Per-device temperature offset, adjustable at runtime.
 - Boiler control: power target, max room/target difference, summer mode,
   keep-on mode and circulation pumps.
-- A bundled Lovelace card, served and registered by the integration itself.
+- A companion Lovelace card, distributed separately as
+  [heating-schedule-card][card].
 
 ## Installation
 
@@ -42,28 +43,28 @@ configured afterwards through **Configure**:
 
 ## The card
 
-The card is served by the integration and registered as a Lovelace resource
-automatically. Add it from the dashboard card picker ("Heating Schedule"), or
-by hand:
+The dashboard card lives in its own repository, [heating-schedule-card][card],
+and installs as a separate HACS dashboard resource. It is optional — the
+integration exposes ordinary entities and works without it.
+
+Once installed, add it from the card picker ("Heating Schedule"), or by hand:
 
 ```yaml
 type: custom:heating-schedule-card
 ```
 
-If Lovelace runs in YAML mode, automatic resource registration is skipped —
-add it yourself:
+## Upgrading from 0.2.0
 
-```yaml
-lovelace:
-  mode: yaml
-  resources:
-    - url: /heating_schedule_static/heating-schedule-card.js
-      type: module
-```
+Releases up to 0.2.0 bundled the card and registered a Lovelace resource
+pointing at `/heating_schedule_static/heating-schedule-card.js`. The
+integration no longer serves that URL, so:
 
-The served URL carries a hash of the card file, so a changed card invalidates
-every cache on its own; there is no version to bump by hand.
+1. Delete that resource under Settings → Dashboards → ⋮ → Resources.
+2. Install [heating-schedule-card][card] through HACS.
+3. Reload the browser.
 
 ## Requirements
 
 Home Assistant 2024.6 or newer.
+
+[card]: https://github.com/fikusus/heating-schedule-card

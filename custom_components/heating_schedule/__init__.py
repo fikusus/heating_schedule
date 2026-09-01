@@ -14,7 +14,6 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import HeatingScheduleCoordinator
-from .frontend import async_register_card
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -34,8 +33,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data[f"{entry.entry_id}_dev_sig"] = _devices_signature(entry.options)
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_if_devices_changed))
-
-    await async_register_card(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

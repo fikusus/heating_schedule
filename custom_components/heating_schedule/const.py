@@ -70,12 +70,6 @@ PLATFORMS = ["number", "time", "sensor", "switch"]
 BOILER_POWER_MIN = 1
 BOILER_POWER_MAX = 100
 
-# Bumped by hand for real releases; the URL also carries a hash of the card
-# file, so editing the card alone is enough to bust every cache.
-CARD_VERSION = "0.2.0"
-CARD_FILENAME = "heating-schedule-card.js"
-CARD_URL_PATH = f"/heating_schedule_static/{CARD_FILENAME}"
-
 DEVICE_NAME = "Heating Schedule"
 DEVICE_MANUFACTURER = "heating_schedule"
 DEVICE_MODEL = "Schedule Controller"
