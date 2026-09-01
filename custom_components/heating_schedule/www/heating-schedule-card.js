@@ -115,7 +115,8 @@ const STYLES = `
     font-size: 1.4rem; font-weight: 600; margin-top: 4px;
   }
   .boiler-toggles {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; margin-top: 8px;
   }
   .toggle {
     display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -300,9 +301,10 @@ class HeatingScheduleCard extends HTMLElement {
 
     const boilerEnabled = byKey.boiler_enabled;
     const boilerSummer = byKey.boiler_summer_mode;
+    const boilerKeepOn = byKey.boiler_keep_on;
     const boilerMaxDiff = byKey.boiler_max_diff;
     const boilerPower = byKey.boiler_power_target;
-    if (boilerEnabled || boilerSummer || boilerMaxDiff || boilerPower) {
+    if (boilerEnabled || boilerSummer || boilerKeepOn || boilerMaxDiff || boilerPower) {
       html.push(`<div class="section-title">Boiler</div>`);
       html.push(`<div class="boiler-row">`);
       html.push(this._boilerStatHtml("Max diff",
@@ -315,6 +317,8 @@ class HeatingScheduleCard extends HTMLElement {
         html.push(this._toggleHtml(boilerEnabled, "Control", "🔥"));
       if (boilerSummer)
         html.push(this._toggleHtml(boilerSummer, "Summer", "☀"));
+      if (boilerKeepOn)
+        html.push(this._toggleHtml(boilerKeepOn, "Keep on", "🔁"));
       html.push(`</div>`);
     }
 

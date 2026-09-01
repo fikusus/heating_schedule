@@ -20,6 +20,7 @@
           "add_device": "Add climate device",
           "edit_devices": "Edit / remove device",
           "boiler_settings": "Boiler: power & switch entities",
+          "boiler_pumps": "Boiler: pumps (smart sockets)",
           "add_boiler_room": "Boiler: add room sensor",
           "edit_boiler_rooms": "Boiler: edit / remove room"
         }
@@ -69,6 +70,13 @@
         "data": {
           "boiler_power_entity": "Power-level number entity",
           "boiler_switch_entity": "On/off switch entity"
+        }
+      },
+      "boiler_pumps": {
+        "title": "Boiler pumps",
+        "description": "Smart sockets / switch entities that follow the boiler on/off state (turn on with the boiler, turn off with it).",
+        "data": {
+          "boiler_pumps": "Pump switches"
         }
       },
       "add_boiler_room": {
@@ -141,7 +149,8 @@
     },
     "switch": {
       "boiler_enabled": { "name": "Boiler Control" },
-      "boiler_summer_mode": { "name": "Boiler Summer Mode" }
+      "boiler_summer_mode": { "name": "Boiler Summer Mode" },
+      "boiler_keep_on": { "name": "Boiler Keep On" }
     }
   }
 }

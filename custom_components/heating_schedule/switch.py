@@ -16,6 +16,7 @@ from .const import (
     DEVICE_NAME,
     DOMAIN,
     OPT_BOILER_ENABLED,
+    OPT_BOILER_KEEP_ON,
     OPT_BOILER_SUMMER,
 )
 
@@ -30,6 +31,11 @@ SWITCH_SPECS: list[dict[str, Any]] = [
         "key": OPT_BOILER_SUMMER,
         "name": "Boiler Summer Mode",
         "icon": "mdi:weather-sunny",
+    },
+    {
+        "key": OPT_BOILER_KEEP_ON,
+        "name": "Boiler Keep On",
+        "icon": "mdi:fire-circle",
     },
 ]
 

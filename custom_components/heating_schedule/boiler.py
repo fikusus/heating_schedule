@@ -22,7 +22,9 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     OPT_BOILER_ENABLED,
+    OPT_BOILER_KEEP_ON,
     OPT_BOILER_POWER_ENTITY,
+    OPT_BOILER_PUMPS,
     OPT_BOILER_ROOMS,
     OPT_BOILER_SUMMER,
     OPT_BOILER_SWITCH_ENTITY,
@@ -113,15 +115,19 @@ class BoilerController:
         max_diff = math.floor(max(diffs) * 100) / 100      # 2-decimal floor
         clamped = max(0.0, min(max_diff, 1.0))
         power = int(round(clamped * 99 + 1))
-        switch_target = "off" if max_diff < 0 else "on"
+
+        keep_on = bool(opts.get(OPT_BOILER_KEEP_ON, False))
+        switch_target = "on" if (max_diff >= 0 or keep_on) else "off"
 
         await self._apply_power(opts.get(OPT_BOILER_POWER_ENTITY), power)
         await self._apply_switch(opts.get(OPT_BOILER_SWITCH_ENTITY), switch_target)
+        await self._apply_pumps(opts.get(OPT_BOILER_PUMPS) or [], switch_target)
 
         return {
             "max_diff": max_diff,
             "power": power,
             "switch": switch_target,
+            "keep_on": keep_on,
             "active": True,
         }
 
@@ -149,5 +155,18 @@ class BoilerController:
             "switch",
             service,
             {"entity_id": switch_entity},
+            blocking=False,
+        )
+
+    async def _apply_pumps(self, pumps: list[str], target: str) -> None:
+        """Mirror the boiler switch state on each configured pump."""
+        valid = [p for p in pumps if p and self.hass.states.get(p) is not None]
+        if not valid:
+            return
+        service = "turn_on" if target == "on" else "turn_off"
+        await self.hass.services.async_call(
+            "switch",
+            service,
+            {"entity_id": valid},
             blocking=False,
         )

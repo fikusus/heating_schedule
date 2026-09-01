@@ -20,6 +20,7 @@
           "add_device": "Добавить климат-устройство",
           "edit_devices": "Изменить / удалить устройство",
           "boiler_settings": "Котёл: число мощности и переключатель",
+          "boiler_pumps": "Котёл: насосы (умные розетки)",
           "add_boiler_room": "Котёл: добавить комнату",
           "edit_boiler_rooms": "Котёл: изменить / удалить комнату"
         }
@@ -69,6 +70,13 @@
         "data": {
           "boiler_power_entity": "Сущность number — мощность",
           "boiler_switch_entity": "Сущность switch — вкл/выкл"
+        }
+      },
+      "boiler_pumps": {
+        "title": "Насосы котла",
+        "description": "Умные розетки / switch-сущности которые повторяют состояние котла (включаются вместе с ним, выключаются вместе с ним).",
+        "data": {
+          "boiler_pumps": "Переключатели насосов"
         }
       },
       "add_boiler_room": {
@@ -141,7 +149,8 @@
     },
     "switch": {
       "boiler_enabled": { "name": "Котёл: управление" },
-      "boiler_summer_mode": { "name": "Котёл: летний режим" }
+      "boiler_summer_mode": { "name": "Котёл: летний режим" },
+      "boiler_keep_on": { "name": "Котёл: не выключать" }
     }
   }
 }

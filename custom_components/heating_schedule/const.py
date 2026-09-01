@@ -17,8 +17,10 @@ OPT_DEVICES = "devices"
 OPT_BOILER_ROOMS = "boiler_rooms"
 OPT_BOILER_POWER_ENTITY = "boiler_power_entity"
 OPT_BOILER_SWITCH_ENTITY = "boiler_switch_entity"
+OPT_BOILER_PUMPS = "boiler_pumps"
 OPT_BOILER_ENABLED = "boiler_enabled"
 OPT_BOILER_SUMMER = "boiler_summer_mode"
+OPT_BOILER_KEEP_ON = "boiler_keep_on"
 
 DEV_ENTITY_ID = "entity_id"
 DEV_OFFSET = "offset"
@@ -57,8 +59,10 @@ DEFAULTS: dict = {
     OPT_BOILER_ROOMS: [],
     OPT_BOILER_POWER_ENTITY: None,
     OPT_BOILER_SWITCH_ENTITY: None,
+    OPT_BOILER_PUMPS: [],
     OPT_BOILER_ENABLED: False,
     OPT_BOILER_SUMMER: False,
+    OPT_BOILER_KEEP_ON: False,
 }
 
 PLATFORMS = ["number", "time", "sensor", "switch"]
@@ -66,9 +70,11 @@ PLATFORMS = ["number", "time", "sensor", "switch"]
 BOILER_POWER_MIN = 1
 BOILER_POWER_MAX = 100
 
+# Bumped by hand for real releases; the URL also carries a hash of the card
+# file, so editing the card alone is enough to bust every cache.
 CARD_VERSION = "0.2.0"
-CARD_URL_PATH = "/heating_schedule_static/heating-schedule-card.js"
-CARD_URL_VERSIONED = f"{CARD_URL_PATH}?v={CARD_VERSION}"
+CARD_FILENAME = "heating-schedule-card.js"
+CARD_URL_PATH = f"/heating_schedule_static/{CARD_FILENAME}"
 
 DEVICE_NAME = "Heating Schedule"
 DEVICE_MANUFACTURER = "heating_schedule"

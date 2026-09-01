@@ -41,6 +41,7 @@ from .const import (
     OPT_BED_NIGHT_TEMP,
     OPT_BED_NIGHT_TO_DAY,
     OPT_BOILER_POWER_ENTITY,
+    OPT_BOILER_PUMPS,
     OPT_BOILER_ROOMS,
     OPT_BOILER_SWITCH_ENTITY,
     OPT_DAY_TEMP,
@@ -140,6 +141,7 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 "add_device",
                 "edit_devices",
                 "boiler_settings",
+                "boiler_pumps",
                 "add_boiler_room",
                 "edit_boiler_rooms",
             ],
@@ -316,6 +318,27 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
             }
         )
         return self.async_show_form(step_id="boiler_settings", data_schema=schema)
+
+    async def async_step_boiler_pumps(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            pumps = user_input.get(OPT_BOILER_PUMPS) or []
+            self._draft[OPT_BOILER_PUMPS] = list(pumps)
+            return await self._async_save_and_finish()
+
+        d = self._draft
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    OPT_BOILER_PUMPS,
+                    default=d.get(OPT_BOILER_PUMPS) or [],
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="switch", multiple=True)
+                ),
+            }
+        )
+        return self.async_show_form(step_id="boiler_pumps", data_schema=schema)
 
     async def async_step_add_boiler_room(
         self, user_input: dict[str, Any] | None = None
