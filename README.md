@@ -71,6 +71,26 @@ wanted but the pump is still held back, so a waiting branch does not look idle.
 Summer mode stops branches outright rather than driving them to maximum the way
 it does with ordinary climate devices.
 
+### One owner per switch
+
+A valve or a pump answers to exactly one part of this integration. The boiler
+mirrors its own on/off state onto the switches in its pump list and knows
+nothing about any actuator, so a switch listed both as a branch pump and as a
+boiler pump would be driven by two controllers at once -- and the boiler would
+happily start it against a closed valve. The options flow refuses that
+combination, along with a switch serving as both actuator and pump.
+
+The boiler pump list is for pumps with no valve of their own, such as a main
+circulation pump, which cannot be run dry against anything.
+
+### Seeing what is configured
+
+The **Configure** menu opens with a table of every entity the integration
+touches and what it is used for, so an assignment can be checked without
+walking through each step. Entities driven from more than one place are flagged
+-- validation refuses new conflicts, but a configuration written before that
+existed can still carry one.
+
 **This is a software interlock.** If you can also wire the pump through a limit
 switch on the actuator, or otherwise make it physically impossible to run the
 pump against a closed valve, do that as well — nothing here protects against a

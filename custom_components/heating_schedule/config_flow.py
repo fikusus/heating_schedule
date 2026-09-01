@@ -36,20 +36,10 @@ from .const import (
     BRANCH_PUMP,
     BRANCH_SENSORS,
     BRANCH_TRAVEL_S,
+    DEFAULTS,
     DEFAULT_HYSTERESIS,
     DEFAULT_MIN_CYCLE_S,
     DEFAULT_TRAVEL_S,
-    DEFAULTS,
-    HYSTERESIS_MAX,
-    HYSTERESIS_MIN,
-    HYSTERESIS_STEP,
-    MIN_CYCLE_MAX,
-    MIN_CYCLE_MIN,
-    MIN_CYCLE_STEP,
-    OPT_BRANCHES,
-    TRAVEL_MAX,
-    TRAVEL_MIN,
-    TRAVEL_STEP,
     DEV_ENTITY_ID,
     DEV_IS_BEDROOM,
     DEV_OFFSET,
@@ -57,6 +47,12 @@ from .const import (
     DURATION_MAX,
     DURATION_MIN,
     DURATION_STEP,
+    HYSTERESIS_MAX,
+    HYSTERESIS_MIN,
+    HYSTERESIS_STEP,
+    MIN_CYCLE_MAX,
+    MIN_CYCLE_MIN,
+    MIN_CYCLE_STEP,
     OFFSET_MAX,
     OFFSET_MIN,
     OFFSET_STEP,
@@ -67,6 +63,7 @@ from .const import (
     OPT_BOILER_PUMPS,
     OPT_BOILER_ROOMS,
     OPT_BOILER_SWITCH_ENTITY,
+    OPT_BRANCHES,
     OPT_DAY_TEMP,
     OPT_DAY_TO_NIGHT,
     OPT_DEVICES,
@@ -78,6 +75,9 @@ from .const import (
     TEMP_MAX,
     TEMP_MIN,
     TEMP_STEP,
+    TRAVEL_MAX,
+    TRAVEL_MIN,
+    TRAVEL_STEP,
 )
 
 
@@ -178,19 +178,107 @@ def _branch_schema(current: dict[str, Any], *, with_remove: bool) -> vol.Schema:
     return vol.Schema(fields)
 
 
-def _validate_branch(user_input: dict[str, Any]) -> dict[str, str]:
-    """Reject the two configurations that fail quietly or dangerously."""
+def _branch_owned_entities(
+    draft: dict[str, Any], exclude_id: str | None = None
+) -> set[str]:
+    """Actuators and pumps already claimed by a branch."""
+    owned: set[str] = set()
+    for branch in draft.get(OPT_BRANCHES, []) or []:
+        if exclude_id is not None and branch.get(BRANCH_ID) == exclude_id:
+            continue
+        for key in (BRANCH_ACTUATOR, BRANCH_PUMP):
+            if branch.get(key):
+                owned.add(branch[key])
+    return owned
+
+
+def _boiler_owned_entities(draft: dict[str, Any]) -> set[str]:
+    """Switches the boiler drives directly."""
+    owned = {e for e in draft.get(OPT_BOILER_PUMPS, []) or [] if e}
+    if draft.get(OPT_BOILER_SWITCH_ENTITY):
+        owned.add(draft[OPT_BOILER_SWITCH_ENTITY])
+    return owned
+
+
+def _configuration_summary(options: dict[str, Any]) -> str:
+    """Flat "entity -> what uses it" table, rendered into the options menu.
+
+    Roles are collected per entity rather than per section, so an entity claimed
+    twice shows up as one row with both roles and a warning marker. The input
+    validation refuses new conflicts, but configurations written before it
+    existed can still carry one.
+    """
+    roles: dict[str, list[str]] = {}
+    drivers: dict[str, int] = {}
+
+    def add(entity_id: str | None, role: str, *, driven: bool = True) -> None:
+        """Record a role. Only entities this integration *drives* can clash;
+        two readers of one sensor are perfectly normal."""
+        if not entity_id:
+            return
+        roles.setdefault(entity_id, []).append(role)
+        if driven:
+            drivers[entity_id] = drivers.get(entity_id, 0) + 1
+
+    for dev in options.get(OPT_DEVICES, []) or []:
+        label = f"device, offset {float(dev.get(DEV_OFFSET, 0)):+.1f} °C"
+        if dev.get(DEV_IS_BEDROOM):
+            label += ", bedroom"
+        add(dev.get(DEV_ENTITY_ID), label)
+
+    for branch in options.get(OPT_BRANCHES, []) or []:
+        name = branch.get(BRANCH_NAME) or branch.get(BRANCH_ID, "?")
+        add(branch.get(BRANCH_ACTUATOR), f"branch {name}: actuator")
+        add(branch.get(BRANCH_PUMP), f"branch {name}: pump")
+        for sensor in branch.get(BRANCH_SENSORS) or []:
+            add(sensor, f"branch {name}: sensor", driven=False)
+
+    add(options.get(OPT_BOILER_POWER_ENTITY), "boiler: power")
+    add(options.get(OPT_BOILER_SWITCH_ENTITY), "boiler: on/off")
+    for pump in options.get(OPT_BOILER_PUMPS) or []:
+        add(pump, "boiler: pump")
+    for room in options.get(OPT_BOILER_ROOMS) or []:
+        label = "boiler: room" + (", bedroom" if room.get(ROOM_IS_BEDROOM) else "")
+        add(room.get(ROOM_SENSOR), label, driven=False)
+
+    if not roles:
+        return "_Nothing configured yet._"
+
+    lines = ["| | Entity | Used as |", "|---|---|---|"]
+    for entity_id in sorted(roles):
+        used = roles[entity_id]
+        marker = "⚠️" if drivers.get(entity_id, 0) > 1 else ""
+        lines.append(f"| {marker} | `{entity_id}` | {'; '.join(used)} |")
+    return "\n".join(lines)
+
+
+def _validate_branch(
+    user_input: dict[str, Any],
+    draft: dict[str, Any],
+    branch_id: str | None = None,
+) -> dict[str, str]:
+    """Reject the configurations that fail quietly or dangerously."""
     errors: dict[str, str] = {}
     if not (user_input.get(BRANCH_SENSORS) or []):
         # Without a reading the branch can never decide to heat, and would sit
         # cold forever with nothing in the log to say why.
         errors[BRANCH_SENSORS] = "no_sensors"
-    if user_input.get(BRANCH_ACTUATOR) and user_input.get(
-        BRANCH_ACTUATOR
-    ) == user_input.get(BRANCH_PUMP):
+
+    actuator = user_input.get(BRANCH_ACTUATOR)
+    pump = user_input.get(BRANCH_PUMP)
+    if actuator and actuator == pump:
         # One switch for both would start the pump at the same instant as the
         # valve, against a valve that has not travelled yet.
         errors[BRANCH_PUMP] = "same_entity"
+
+    # A valve or pump must answer to exactly one owner. The boiler mirrors its
+    # own on/off state onto its pumps and knows nothing about any actuator, so
+    # a shared switch means the two controllers fight and the pump runs dry.
+    taken = _branch_owned_entities(draft, exclude_id=branch_id)
+    taken |= _boiler_owned_entities(draft)
+    for key, entity_id in ((BRANCH_ACTUATOR, actuator), (BRANCH_PUMP, pump)):
+        if entity_id and entity_id in taken and key not in errors:
+            errors[key] = "entity_in_use"
     return errors
 
 
@@ -253,6 +341,9 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="init",
+            description_placeholders={
+                "summary": _configuration_summary(self._draft)
+            },
             menu_options=[
                 "globals",
                 "add_device",
@@ -414,16 +505,19 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
     async def async_step_boiler_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._draft[OPT_BOILER_POWER_ENTITY] = (
-                user_input.get(OPT_BOILER_POWER_ENTITY) or None
-            )
-            self._draft[OPT_BOILER_SWITCH_ENTITY] = (
-                user_input.get(OPT_BOILER_SWITCH_ENTITY) or None
-            )
-            return await self._async_save_and_finish()
+            switch_entity = user_input.get(OPT_BOILER_SWITCH_ENTITY) or None
+            if switch_entity and switch_entity in _branch_owned_entities(self._draft):
+                errors[OPT_BOILER_SWITCH_ENTITY] = "entity_in_use"
+            else:
+                self._draft[OPT_BOILER_POWER_ENTITY] = (
+                    user_input.get(OPT_BOILER_POWER_ENTITY) or None
+                )
+                self._draft[OPT_BOILER_SWITCH_ENTITY] = switch_entity
+                return await self._async_save_and_finish()
 
-        d = self._draft
+        d = user_input if user_input is not None else self._draft
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -436,17 +530,23 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 ): EntitySelector(EntitySelectorConfig(domain="switch")),
             }
         )
-        return self.async_show_form(step_id="boiler_settings", data_schema=schema)
+        return self.async_show_form(
+            step_id="boiler_settings", data_schema=schema, errors=errors
+        )
 
     async def async_step_boiler_pumps(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            pumps = user_input.get(OPT_BOILER_PUMPS) or []
-            self._draft[OPT_BOILER_PUMPS] = list(pumps)
-            return await self._async_save_and_finish()
+            pumps = list(user_input.get(OPT_BOILER_PUMPS) or [])
+            if set(pumps) & _branch_owned_entities(self._draft):
+                errors[OPT_BOILER_PUMPS] = "entity_in_use"
+            else:
+                self._draft[OPT_BOILER_PUMPS] = pumps
+                return await self._async_save_and_finish()
 
-        d = self._draft
+        d = user_input if user_input is not None else self._draft
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -457,7 +557,9 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 ),
             }
         )
-        return self.async_show_form(step_id="boiler_pumps", data_schema=schema)
+        return self.async_show_form(
+            step_id="boiler_pumps", data_schema=schema, errors=errors
+        )
 
     async def async_step_add_boiler_room(
         self, user_input: dict[str, Any] | None = None
@@ -568,7 +670,7 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _validate_branch(user_input)
+            errors = _validate_branch(user_input, self._draft)
             if not errors:
                 branch = _branch_from_input(user_input, uuid.uuid4().hex[:8])
                 self._draft[OPT_BRANCHES].append(branch)
@@ -628,7 +730,7 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                     b for b in self._draft[OPT_BRANCHES] if b[BRANCH_ID] != target_id
                 ]
                 return await self._async_save_and_finish()
-            errors = _validate_branch(user_input)
+            errors = _validate_branch(user_input, self._draft, target_id)
             if not errors:
                 updated = _branch_from_input(user_input, target_id)
                 self._draft[OPT_BRANCHES] = [

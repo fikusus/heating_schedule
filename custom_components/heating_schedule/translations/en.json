@@ -14,7 +14,7 @@
     "step": {
       "init": {
         "title": "Heating Schedule",
-        "description": "Choose what to configure.",
+        "description": "Choose what to configure.\n\n{summary}",
         "menu_options": {
           "globals": "Temperatures, times and transition",
           "add_device": "Add climate device",
@@ -148,7 +148,8 @@
     },
     "error": {
       "no_sensors": "Pick at least one temperature sensor, otherwise the branch can never decide to heat.",
-      "same_entity": "The actuator and the pump must be different switches."
+      "same_entity": "The actuator and the pump must be different switches.",
+      "entity_in_use": "This entity is already driven elsewhere in this integration. A valve or pump must have exactly one owner."
     }
   },
   "entity": {
