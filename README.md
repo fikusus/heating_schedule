@@ -43,6 +43,20 @@ configured afterwards through **Configure**:
 - **Boiler** — power and switch entities, pumps, and the rooms whose sensors
   feed the boiler logic.
 
+## Configuration overview
+
+Settings are spread across seven steps of the **Configure** menu, so the menu
+opens with a summary of the lot: the schedule temperatures and switch-over
+times, every tracked climate device with its offset, each branch with its
+sensors, actuator, pump and tuning, and the boiler with its entities, pumps and
+rooms. Checking a value no longer means walking into the step that owns it.
+
+Switches driven from more than one place are listed separately at the bottom.
+Validation refuses new conflicts, but a configuration written before that
+existed can still carry one. Sensors read by two sections are not flagged —
+that is ordinary, and marking it would bury the conflicts that matter.
+
+
 ## Heating branches
 
 A branch is a heating loop with its own temperature sensors, a valve actuator
@@ -82,19 +96,6 @@ combination, along with a switch serving as both actuator and pump.
 
 The boiler pump list is for pumps with no valve of their own, such as a main
 circulation pump, which cannot be run dry against anything.
-
-### Seeing what is configured
-
-The **Configure** menu opens with a table of every entity the integration
-touches and what it is used for, so an assignment can be checked without
-walking through each step. Entities driven from more than one place are flagged
--- validation refuses new conflicts, but a configuration written before that
-existed can still carry one.
-
-**This is a software interlock.** If you can also wire the pump through a limit
-switch on the actuator, or otherwise make it physically impossible to run the
-pump against a closed valve, do that as well — nothing here protects against a
-frozen Home Assistant or a radio link that stops delivering.
 
 ## The card
 
