@@ -22,7 +22,9 @@
           "boiler_settings": "Boiler: power & switch entities",
           "boiler_pumps": "Boiler: pumps (smart sockets)",
           "add_boiler_room": "Boiler: add room sensor",
-          "edit_boiler_rooms": "Boiler: edit / remove room"
+          "edit_boiler_rooms": "Boiler: edit / remove room",
+          "add_branch": "Add heating branch",
+          "edit_branches": "Edit / remove heating branch"
         }
       },
       "globals": {
@@ -101,27 +103,82 @@
           "is_bedroom": "Bedroom",
           "remove": "Remove this room"
         }
+      },
+      "add_branch": {
+        "title": "Add heating branch",
+        "description": "The pump runs only while the actuator is confirmed open. Travel time is how long the actuator needs before the pump may start: around 180 s for a thermoelectric head, 30 s for a motorised one.",
+        "data": {
+          "name": "Name",
+          "sensors": "Temperature sensors",
+          "actuator": "Actuator (valve) switch",
+          "pump": "Pump switch",
+          "hysteresis": "Hysteresis (°C)",
+          "actuator_travel_s": "Actuator travel time (s)",
+          "min_cycle_s": "Minimum pump restart interval (s)"
+        }
+      },
+      "edit_branches": {
+        "title": "Edit heating branch",
+        "data": {
+          "branch": "Branch"
+        }
+      },
+      "edit_branch": {
+        "title": "Edit {name}",
+        "description": "The pump runs only while the actuator is confirmed open. Travel time is how long the actuator needs before the pump may start: around 180 s for a thermoelectric head, 30 s for a motorised one.",
+        "data": {
+          "name": "Name",
+          "sensors": "Temperature sensors",
+          "actuator": "Actuator (valve) switch",
+          "pump": "Pump switch",
+          "hysteresis": "Hysteresis (°C)",
+          "actuator_travel_s": "Actuator travel time (s)",
+          "min_cycle_s": "Minimum pump restart interval (s)",
+          "remove": "Remove branch"
+        }
       }
     },
     "abort": {
       "no_devices": "No devices configured yet. Use 'Add climate device'.",
       "device_not_found": "Selected device no longer exists.",
       "no_rooms": "No boiler rooms configured yet. Use 'Boiler: add room sensor'.",
-      "room_not_found": "Selected room no longer exists."
+      "room_not_found": "Selected room no longer exists.",
+      "no_branches": "No heating branches configured. Use \"Add heating branch\".",
+      "branch_not_found": "The selected branch no longer exists."
+    },
+    "error": {
+      "no_sensors": "Pick at least one temperature sensor, otherwise the branch can never decide to heat.",
+      "same_entity": "The actuator and the pump must be different switches."
     }
   },
   "entity": {
     "number": {
-      "day_temp": { "name": "Day Temp" },
-      "night_temp": { "name": "Night Temp" },
-      "bedroom_night_temp": { "name": "Bedroom Night Temp" },
-      "transition_duration_min": { "name": "Transition Duration" }
+      "day_temp": {
+        "name": "Day Temp"
+      },
+      "night_temp": {
+        "name": "Night Temp"
+      },
+      "bedroom_night_temp": {
+        "name": "Bedroom Night Temp"
+      },
+      "transition_duration_min": {
+        "name": "Transition Duration"
+      }
     },
     "time": {
-      "day_to_night_time": { "name": "Day → Night" },
-      "night_to_day_time": { "name": "Night → Day" },
-      "bedroom_day_to_night_time": { "name": "Bedroom Day → Night" },
-      "bedroom_night_to_day_time": { "name": "Bedroom Night → Day" }
+      "day_to_night_time": {
+        "name": "Day → Night"
+      },
+      "night_to_day_time": {
+        "name": "Night → Day"
+      },
+      "bedroom_day_to_night_time": {
+        "name": "Bedroom Day → Night"
+      },
+      "bedroom_night_to_day_time": {
+        "name": "Bedroom Night → Day"
+      }
     },
     "sensor": {
       "current_main_phase": {
@@ -142,15 +199,29 @@
           "transition_to_day": "Transition to day"
         }
       },
-      "current_main_target": { "name": "Main Target" },
-      "current_bedroom_target": { "name": "Bedroom Target" },
-      "boiler_max_diff": { "name": "Boiler Max Diff" },
-      "boiler_power_target": { "name": "Boiler Power Target" }
+      "current_main_target": {
+        "name": "Main Target"
+      },
+      "current_bedroom_target": {
+        "name": "Bedroom Target"
+      },
+      "boiler_max_diff": {
+        "name": "Boiler Max Diff"
+      },
+      "boiler_power_target": {
+        "name": "Boiler Power Target"
+      }
     },
     "switch": {
-      "boiler_enabled": { "name": "Boiler Control" },
-      "boiler_summer_mode": { "name": "Boiler Summer Mode" },
-      "boiler_keep_on": { "name": "Boiler Keep On" }
+      "boiler_enabled": {
+        "name": "Boiler Control"
+      },
+      "boiler_summer_mode": {
+        "name": "Boiler Summer Mode"
+      },
+      "boiler_keep_on": {
+        "name": "Boiler Keep On"
+      }
     }
   }
 }

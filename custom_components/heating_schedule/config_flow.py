@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import voluptuous as vol
@@ -22,11 +23,33 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
     TimeSelector,
 )
 
 from .const import (
+    BRANCH_ACTUATOR,
+    BRANCH_HYSTERESIS,
+    BRANCH_ID,
+    BRANCH_MIN_CYCLE_S,
+    BRANCH_NAME,
+    BRANCH_PUMP,
+    BRANCH_SENSORS,
+    BRANCH_TRAVEL_S,
+    DEFAULT_HYSTERESIS,
+    DEFAULT_MIN_CYCLE_S,
+    DEFAULT_TRAVEL_S,
     DEFAULTS,
+    HYSTERESIS_MAX,
+    HYSTERESIS_MIN,
+    HYSTERESIS_STEP,
+    MIN_CYCLE_MAX,
+    MIN_CYCLE_MIN,
+    MIN_CYCLE_STEP,
+    OPT_BRANCHES,
+    TRAVEL_MAX,
+    TRAVEL_MIN,
+    TRAVEL_STEP,
     DEV_ENTITY_ID,
     DEV_IS_BEDROOM,
     DEV_OFFSET,
@@ -94,6 +117,96 @@ def _duration_selector() -> NumberSelector:
     )
 
 
+def _hysteresis_selector() -> NumberSelector:
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=HYSTERESIS_MIN,
+            max=HYSTERESIS_MAX,
+            step=HYSTERESIS_STEP,
+            mode=NumberSelectorMode.BOX,
+            unit_of_measurement="°C",
+        )
+    )
+
+
+def _seconds_selector(minimum: int, maximum: int, step: int) -> NumberSelector:
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=minimum,
+            max=maximum,
+            step=step,
+            mode=NumberSelectorMode.BOX,
+            unit_of_measurement="s",
+        )
+    )
+
+
+def _branch_schema(current: dict[str, Any], *, with_remove: bool) -> vol.Schema:
+    """Form for one branch. Shared by the add and edit steps."""
+    fields: dict[Any, Any] = {
+        vol.Required(
+            BRANCH_NAME, default=current.get(BRANCH_NAME, "")
+        ): TextSelector(),
+        vol.Required(
+            BRANCH_SENSORS, default=current.get(BRANCH_SENSORS, [])
+        ): EntitySelector(
+            EntitySelectorConfig(
+                domain="sensor", device_class="temperature", multiple=True
+            )
+        ),
+        vol.Required(
+            BRANCH_ACTUATOR,
+            default=current.get(BRANCH_ACTUATOR) or vol.UNDEFINED,
+        ): EntitySelector(EntitySelectorConfig(domain="switch")),
+        vol.Required(
+            BRANCH_PUMP, default=current.get(BRANCH_PUMP) or vol.UNDEFINED
+        ): EntitySelector(EntitySelectorConfig(domain="switch")),
+        vol.Required(
+            BRANCH_HYSTERESIS,
+            default=current.get(BRANCH_HYSTERESIS, DEFAULT_HYSTERESIS),
+        ): _hysteresis_selector(),
+        vol.Required(
+            BRANCH_TRAVEL_S, default=current.get(BRANCH_TRAVEL_S, DEFAULT_TRAVEL_S)
+        ): _seconds_selector(TRAVEL_MIN, TRAVEL_MAX, TRAVEL_STEP),
+        vol.Required(
+            BRANCH_MIN_CYCLE_S,
+            default=current.get(BRANCH_MIN_CYCLE_S, DEFAULT_MIN_CYCLE_S),
+        ): _seconds_selector(MIN_CYCLE_MIN, MIN_CYCLE_MAX, MIN_CYCLE_STEP),
+    }
+    if with_remove:
+        fields[vol.Optional("remove", default=False)] = BooleanSelector()
+    return vol.Schema(fields)
+
+
+def _validate_branch(user_input: dict[str, Any]) -> dict[str, str]:
+    """Reject the two configurations that fail quietly or dangerously."""
+    errors: dict[str, str] = {}
+    if not (user_input.get(BRANCH_SENSORS) or []):
+        # Without a reading the branch can never decide to heat, and would sit
+        # cold forever with nothing in the log to say why.
+        errors[BRANCH_SENSORS] = "no_sensors"
+    if user_input.get(BRANCH_ACTUATOR) and user_input.get(
+        BRANCH_ACTUATOR
+    ) == user_input.get(BRANCH_PUMP):
+        # One switch for both would start the pump at the same instant as the
+        # valve, against a valve that has not travelled yet.
+        errors[BRANCH_PUMP] = "same_entity"
+    return errors
+
+
+def _branch_from_input(user_input: dict[str, Any], branch_id: str) -> dict[str, Any]:
+    return {
+        BRANCH_ID: branch_id,
+        BRANCH_NAME: user_input[BRANCH_NAME],
+        BRANCH_SENSORS: list(user_input.get(BRANCH_SENSORS) or []),
+        BRANCH_ACTUATOR: user_input[BRANCH_ACTUATOR],
+        BRANCH_PUMP: user_input[BRANCH_PUMP],
+        BRANCH_HYSTERESIS: float(user_input[BRANCH_HYSTERESIS]),
+        BRANCH_TRAVEL_S: int(user_input[BRANCH_TRAVEL_S]),
+        BRANCH_MIN_CYCLE_S: int(user_input[BRANCH_MIN_CYCLE_S]),
+    }
+
+
 class HeatingScheduleConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the initial config flow (singleton entry)."""
 
@@ -128,8 +241,12 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
         self._draft[OPT_BOILER_ROOMS] = [
             dict(r) for r in self._draft.get(OPT_BOILER_ROOMS, []) or []
         ]
+        self._draft[OPT_BRANCHES] = [
+            dict(b) for b in self._draft.get(OPT_BRANCHES, []) or []
+        ]
         self._selected: str | None = None
         self._selected_room: str | None = None
+        self._selected_branch: str | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -144,6 +261,8 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
                 "boiler_pumps",
                 "add_boiler_room",
                 "edit_boiler_rooms",
+                "add_branch",
+                "edit_branches",
             ],
         )
 
@@ -440,6 +559,89 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
             step_id="edit_boiler_room",
             data_schema=schema,
             description_placeholders={"sensor": target_id},
+        )
+
+    # ------------------------------------------------------------ branches
+
+    async def async_step_add_branch(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = _validate_branch(user_input)
+            if not errors:
+                branch = _branch_from_input(user_input, uuid.uuid4().hex[:8])
+                self._draft[OPT_BRANCHES].append(branch)
+                return await self._async_save_and_finish()
+
+        return self.async_show_form(
+            step_id="add_branch",
+            data_schema=_branch_schema(user_input or {}, with_remove=False),
+            errors=errors,
+        )
+
+    async def async_step_edit_branches(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        branches: list[dict] = self._draft.get(OPT_BRANCHES, [])
+        if not branches:
+            return self.async_abort(reason="no_branches")
+
+        if user_input is not None:
+            self._selected_branch = user_input["branch"]
+            return await self.async_step_edit_branch()
+
+        options = [
+            {
+                "value": b[BRANCH_ID],
+                "label": f"{b.get(BRANCH_NAME) or b[BRANCH_ID]} "
+                f"({b.get(BRANCH_ACTUATOR)} + {b.get(BRANCH_PUMP)})",
+            }
+            for b in branches
+        ]
+        schema = vol.Schema(
+            {
+                vol.Required("branch"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=options, mode=SelectSelectorMode.DROPDOWN
+                    )
+                )
+            }
+        )
+        return self.async_show_form(step_id="edit_branches", data_schema=schema)
+
+    async def async_step_edit_branch(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        target_id = self._selected_branch
+        current = next(
+            (b for b in self._draft[OPT_BRANCHES] if b[BRANCH_ID] == target_id),
+            None,
+        )
+        if current is None:
+            return self.async_abort(reason="branch_not_found")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if user_input.get("remove"):
+                self._draft[OPT_BRANCHES] = [
+                    b for b in self._draft[OPT_BRANCHES] if b[BRANCH_ID] != target_id
+                ]
+                return await self._async_save_and_finish()
+            errors = _validate_branch(user_input)
+            if not errors:
+                updated = _branch_from_input(user_input, target_id)
+                self._draft[OPT_BRANCHES] = [
+                    updated if b[BRANCH_ID] == target_id else b
+                    for b in self._draft[OPT_BRANCHES]
+                ]
+                return await self._async_save_and_finish()
+
+        return self.async_show_form(
+            step_id="edit_branch",
+            data_schema=_branch_schema(user_input or current, with_remove=True),
+            description_placeholders={"name": current.get(BRANCH_NAME) or target_id},
+            errors=errors,
         )
 
     # ------------------------------------------------------------ commit

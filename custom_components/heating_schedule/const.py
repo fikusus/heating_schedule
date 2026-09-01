@@ -13,6 +13,7 @@ OPT_NIGHT_TO_DAY = "night_to_day_time"
 OPT_BED_DAY_TO_NIGHT = "bedroom_day_to_night_time"
 OPT_BED_NIGHT_TO_DAY = "bedroom_night_to_day_time"
 OPT_DEVICES = "devices"
+OPT_BRANCHES = "branches"
 
 OPT_BOILER_ROOMS = "boiler_rooms"
 OPT_BOILER_POWER_ENTITY = "boiler_power_entity"
@@ -28,6 +29,20 @@ DEV_IS_BEDROOM = "is_bedroom"
 
 ROOM_SENSOR = "sensor"
 ROOM_IS_BEDROOM = "is_bedroom"
+
+# A branch is a heating loop with its own valve and pump, presented to the rest
+# of Home Assistant as a climate entity.
+BRANCH_ID = "id"
+BRANCH_NAME = "name"
+BRANCH_SENSORS = "sensors"
+BRANCH_ACTUATOR = "actuator"
+BRANCH_PUMP = "pump"
+BRANCH_HYSTERESIS = "hysteresis"
+BRANCH_TRAVEL_S = "actuator_travel_s"
+BRANCH_MIN_CYCLE_S = "min_cycle_s"
+
+# hass.data key suffix holding the per-branch controllers.
+DATA_BRANCHES = "branches"
 
 PHASE_DAY = "day"
 PHASE_TRANSITION_TO_NIGHT = "transition_to_night"
@@ -56,6 +71,7 @@ DEFAULTS: dict = {
     OPT_BED_DAY_TO_NIGHT: "21:30:00",
     OPT_BED_NIGHT_TO_DAY: "07:00:00",
     OPT_DEVICES: [],
+    OPT_BRANCHES: [],
     OPT_BOILER_ROOMS: [],
     OPT_BOILER_POWER_ENTITY: None,
     OPT_BOILER_SWITCH_ENTITY: None,
@@ -65,7 +81,29 @@ DEFAULTS: dict = {
     OPT_BOILER_KEEP_ON: False,
 }
 
-PLATFORMS = ["number", "time", "sensor", "switch"]
+PLATFORMS = ["number", "time", "sensor", "switch", "climate"]
+
+HYSTERESIS_MIN = 0.2
+HYSTERESIS_MAX = 5.0
+HYSTERESIS_STEP = 0.1
+DEFAULT_HYSTERESIS = 0.5
+
+# Thermoelectric actuators need minutes to travel; motorised ones seconds.
+TRAVEL_MIN = 0
+TRAVEL_MAX = 600
+TRAVEL_STEP = 10
+DEFAULT_TRAVEL_S = 180
+
+# Guards the pump against short cycling. It only ever delays a start, never a
+# stop -- a stop is a safety action and must not wait for anything.
+MIN_CYCLE_MIN = 0
+MIN_CYCLE_MAX = 3600
+MIN_CYCLE_STEP = 30
+DEFAULT_MIN_CYCLE_S = 300
+
+# The interlock is re-asserted on this interval regardless of events, so a
+# missed state update cannot leave the pump running against a closed valve.
+WATCHDOG_INTERVAL_S = 60
 
 BOILER_POWER_MIN = 1
 BOILER_POWER_MAX = 100

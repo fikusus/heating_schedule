@@ -11,6 +11,8 @@ boiler control.
 - Per-device temperature offset, adjustable at runtime.
 - Boiler control: power target, max room/target difference, summer mode,
   keep-on mode and circulation pumps.
+- Heating branches with their own valve and pump, presented as climate
+  entities and interlocked so the pump cannot run against a closed valve.
 - A companion Lovelace card, distributed separately as
   [heating-schedule-card][card].
 
@@ -40,6 +42,39 @@ configured afterwards through **Configure**:
   "bedroom" flag that selects the bedroom schedule.
 - **Boiler** — power and switch entities, pumps, and the rooms whose sensors
   feed the boiler logic.
+
+## Heating branches
+
+A branch is a heating loop with its own temperature sensors, a valve actuator
+and a circulation pump. Add one under **Configure → Add heating branch**, and it
+appears as a climate entity you can drive by hand, from the card, or by adding
+it to the tracked devices so the schedule sets its target like any other head.
+
+Control is a plain hysteresis loop around the coldest sensor on the branch.
+Underneath it sits one rule that is not part of that loop:
+
+> the pump runs only while the actuator is confirmed open
+
+It is re-asserted from three independent triggers — the control loop, the
+actuator reporting a state change, and a watchdog every 60 seconds — because a
+pump running against a closed valve destroys itself, and a missed state update
+must not be enough to cause that. Starting up opens the valve, waits out the
+actuator travel time, then starts the pump. Shutting down stops the pump first,
+and is never delayed by anything.
+
+Per branch you configure the sensors, the actuator and pump switches, the
+hysteresis, the actuator travel time (around 180 s for a thermoelectric head,
+30 s for a motorised one) and a minimum interval between pump starts, which
+guards against short cycling. `hvac_action` reports `preheating` while heat is
+wanted but the pump is still held back, so a waiting branch does not look idle.
+
+Summer mode stops branches outright rather than driving them to maximum the way
+it does with ordinary climate devices.
+
+**This is a software interlock.** If you can also wire the pump through a limit
+switch on the actuator, or otherwise make it physically impossible to run the
+pump against a closed valve, do that as well — nothing here protects against a
+frozen Home Assistant or a radio link that stops delivering.
 
 ## The card
 
