@@ -113,6 +113,17 @@ now counts as such. Earlier versions compared against the bare schedule target,
 so raising a room's offset quietly left the boiler under-reading demand in
 exactly that room.
 
+### Seeing the breakdown
+
+`sensor.*_boiler_max_diff` carries the whole calculation in a `demand`
+attribute: one entry per room with its name, current temperature, target and
+shortfall, worst first. The number itself is the largest shortfall and is **not**
+clamped — it goes negative once every room is past its target, which is the
+signal that the boiler has nothing left to do. Only the power level is floored,
+at 1%.
+
+The [card][card] renders that attribute behind a *Rooms* button.
+
 ### One owner per switch
 
 A valve or a pump answers to exactly one part of this integration. The boiler

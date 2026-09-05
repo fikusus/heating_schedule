@@ -20,6 +20,7 @@ from .branch import read_min_temperature
 from .const import (
     BRANCH_ID,
     BRANCH_IS_BEDROOM,
+    BRANCH_NAME,
     BRANCH_OFFSET,
     BRANCH_SENSORS,
     DEFAULTS,
@@ -257,11 +258,14 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         main_target = compute_target(main_phase, day_t, night_t)
         bed_target = compute_target(bed_phase, day_t, bed_night_t)
 
-        shortfalls = await self._apply_to_devices(opts, main_target, bed_target)
-        zone_targets, zone_shortfalls = self._evaluate_zones(
+        demand = await self._apply_to_devices(opts, main_target, bed_target)
+        zone_targets, zone_demand = self._evaluate_zones(
             opts, main_target, bed_target
         )
-        shortfalls.extend(zone_shortfalls)
+        demand.extend(zone_demand)
+        # Worst shortfall first: that is the one setting the power level, and
+        # the one worth seeing at the top of a breakdown.
+        demand.sort(key=lambda row: row["diff"], reverse=True)
 
         boiler_state: dict[str, Any] = {
             "max_diff": None,
@@ -270,7 +274,9 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "active": False,
         }
         if self.boiler is not None:
-            boiler_state = await self.boiler.evaluate_and_apply(opts, shortfalls)
+            boiler_state = await self.boiler.evaluate_and_apply(
+                opts, [row["diff"] for row in demand]
+            )
 
         return {
             "main_phase": main_phase,
@@ -278,6 +284,7 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "main_target": main_target,
             "bed_target": bed_target,
             "zone_targets": zone_targets,
+            "demand": demand,
             "boiler": boiler_state,
         }
 
@@ -286,7 +293,7 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         opts: dict,
         main_target: float,
         bed_target: float,
-    ) -> list[float]:
+    ) -> list[dict[str, Any]]:
         """Push targets to the tracked climate entities and read back demand.
 
         The shortfall is measured against the target the device is actually
@@ -294,7 +301,7 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         assessed as if it were not.
         """
         summer = bool(opts.get(OPT_BOILER_SUMMER, False))
-        shortfalls: list[float] = []
+        demand: list[dict[str, Any]] = []
         tasks = []
 
         for dev in opts.get(OPT_DEVICES, []) or []:
@@ -310,12 +317,16 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 base = bed_target if dev.get(DEV_IS_BEDROOM) else main_target
                 target = _with_offset(base, dev.get(DEV_OFFSET, 0.0))
-                ambient = state.attributes.get("current_temperature")
+                ambient = _as_float(state.attributes.get("current_temperature"))
                 if ambient is not None:
-                    try:
-                        shortfalls.append(target - float(ambient))
-                    except (TypeError, ValueError):
-                        pass
+                    demand.append(
+                        _demand_row(
+                            entity_id,
+                            state.attributes.get("friendly_name") or entity_id,
+                            target,
+                            ambient,
+                        )
+                    )
 
             tasks.append(
                 self.hass.services.async_call(
@@ -332,11 +343,11 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if isinstance(r, Exception):
                     _LOGGER.warning("set_temperature failed: %s", r)
 
-        return shortfalls
+        return demand
 
     def _evaluate_zones(
         self, opts: dict, main_target: float, bed_target: float
-    ) -> tuple[dict[str, float], list[float]]:
+    ) -> tuple[dict[str, float], list[dict[str, Any]]]:
         """Target and shortfall for every zone this integration owns.
 
         Zones are driven from here rather than through a service call to our own
@@ -344,7 +355,7 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         coordinator data.
         """
         targets: dict[str, float] = {}
-        shortfalls: list[float] = []
+        demand: list[dict[str, Any]] = []
         summer = bool(opts.get(OPT_BOILER_SUMMER, False))
 
         for branch in opts.get(OPT_BRANCHES, []) or []:
@@ -361,9 +372,36 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.hass, branch.get(BRANCH_SENSORS) or []
             )
             if ambient is not None:
-                shortfalls.append(target - ambient)
+                demand.append(
+                    _demand_row(
+                        branch_id,
+                        branch.get(BRANCH_NAME) or branch_id,
+                        target,
+                        ambient,
+                    )
+                )
 
-        return targets, shortfalls
+        return targets, demand
+
+
+def _as_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _demand_row(
+    key: str, name: str, target: float, current: float
+) -> dict[str, Any]:
+    """One room's contribution to boiler demand, as shown in the breakdown."""
+    return {
+        "key": key,
+        "name": str(name),
+        "target": round(target, 2),
+        "current": round(current, 2),
+        "diff": round(target - current, 2),
+    }
 
 
 def _max_temp_for(state) -> float:

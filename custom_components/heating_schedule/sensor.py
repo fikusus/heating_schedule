@@ -71,6 +71,9 @@ SENSOR_SPECS: list[dict[str, Any]] = [
         "icon": "mdi:thermometer-alert",
         "data_path": ("boiler", "max_diff"),
         "kind": "temperature",
+        # Carries the per-room breakdown behind the number, so a card can show
+        # what set it without the integration growing an entity per room.
+        "attrs": "demand",
     },
     {
         "key": "boiler_power_target",
@@ -130,6 +133,13 @@ class HeatingScheduleSensor(
         else:
             self._attr_device_class = SensorDeviceClass.ENUM
             self._attr_options = PHASE_OPTIONS
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        key = self._spec.get("attrs")
+        if not key:
+            return None
+        return {key: (self.coordinator.data or {}).get(key) or []}
 
     @property
     def native_value(self) -> Any:
