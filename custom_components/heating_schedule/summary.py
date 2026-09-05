@@ -19,6 +19,8 @@ from .const import (
     BRANCH_MIN_CYCLE_S,
     BRANCH_NAME,
     BRANCH_PUMP,
+    BRANCH_IS_BEDROOM,
+    BRANCH_OFFSET,
     BRANCH_SENSORS,
     BRANCH_TRAVEL_S,
     DEFAULT_HYSTERESIS,
@@ -35,7 +37,6 @@ from .const import (
     OPT_BOILER_KEEP_ON,
     OPT_BOILER_POWER_ENTITY,
     OPT_BOILER_PUMPS,
-    OPT_BOILER_ROOMS,
     OPT_BOILER_SUMMER,
     OPT_BOILER_SWITCH_ENTITY,
     OPT_BRANCHES,
@@ -45,8 +46,6 @@ from .const import (
     OPT_NIGHT_TEMP,
     OPT_NIGHT_TO_DAY,
     OPT_TRANSITION_MIN,
-    ROOM_IS_BEDROOM,
-    ROOM_SENSOR,
 )
 
 _DASH = "—"
@@ -154,44 +153,53 @@ def _devices_section(opts: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _branches_section(opts: dict[str, Any]) -> list[str]:
-    branches = opts.get(OPT_BRANCHES, []) or []
-    if not branches:
-        return ["**Branches** — none", ""]
+def _zones_section(opts: dict[str, Any]) -> list[str]:
+    zones = opts.get(OPT_BRANCHES, []) or []
+    if not zones:
+        return ["**Zones** — none", ""]
 
-    lines = [f"**Branches** — {len(branches)}", ""]
-    for branch in branches:
-        name = branch.get(BRANCH_NAME) or branch.get(BRANCH_ID, "?")
+    lines = [f"**Zones** — {len(zones)}", ""]
+    for zone in zones:
+        name = zone.get(BRANCH_NAME) or zone.get(BRANCH_ID, "?")
+        actuator = zone.get(BRANCH_ACTUATOR)
+        pump = zone.get(BRANCH_PUMP)
+        kind = "branch" if (actuator or pump) else "sensors only"
+        try:
+            offset = f"{float(zone.get(BRANCH_OFFSET, 0)):+.1f} °C"
+        except (TypeError, ValueError):
+            offset = _DASH
+
         lines += [
-            f"*{name}*",
+            f"*{name}* — {kind}",
             "",
             *_TABLE_HEAD,
-            _row("Actuator", _entity(branch.get(BRANCH_ACTUATOR))),
-            _row("Pump", _entity(branch.get(BRANCH_PUMP))),
-            _row("Sensors", _entities(branch.get(BRANCH_SENSORS))),
-            _row(
-                "Hysteresis",
-                _temp(branch.get(BRANCH_HYSTERESIS, DEFAULT_HYSTERESIS)),
-            ),
-            _row(
-                "Actuator travel",
-                f"{int(branch.get(BRANCH_TRAVEL_S, DEFAULT_TRAVEL_S))} s",
-            ),
-            _row(
-                "Min pump interval",
-                f"{int(branch.get(BRANCH_MIN_CYCLE_S, DEFAULT_MIN_CYCLE_S))} s",
-            ),
-            "",
+            _row("Sensors", _entities(zone.get(BRANCH_SENSORS))),
+            _row("Offset", offset),
+            _row("Bedroom", "yes" if zone.get(BRANCH_IS_BEDROOM) else "no"),
         ]
+        if actuator or pump:
+            lines += [
+                _row("Actuator", _entity(actuator)),
+                _row("Pump", _entity(pump)),
+                _row(
+                    "Hysteresis",
+                    _temp(zone.get(BRANCH_HYSTERESIS, DEFAULT_HYSTERESIS)),
+                ),
+                _row(
+                    "Actuator travel",
+                    f"{int(zone.get(BRANCH_TRAVEL_S, DEFAULT_TRAVEL_S))} s",
+                ),
+                _row(
+                    "Min pump interval",
+                    f"{int(zone.get(BRANCH_MIN_CYCLE_S, DEFAULT_MIN_CYCLE_S))} s",
+                ),
+            ]
+        lines.append("")
     return lines
 
 
 def _boiler_section(opts: dict[str, Any]) -> list[str]:
-    rooms = opts.get(OPT_BOILER_ROOMS, []) or []
-    plain = [r.get(ROOM_SENSOR) for r in rooms if not r.get(ROOM_IS_BEDROOM)]
-    bedrooms = [r.get(ROOM_SENSOR) for r in rooms if r.get(ROOM_IS_BEDROOM)]
-
-    lines = [
+    return [
         f"**Boiler** — control {_onoff(opts.get(OPT_BOILER_ENABLED))}, "
         f"summer {_onoff(opts.get(OPT_BOILER_SUMMER))}, "
         f"keep on {_onoff(opts.get(OPT_BOILER_KEEP_ON))}",
@@ -200,11 +208,11 @@ def _boiler_section(opts: dict[str, Any]) -> list[str]:
         _row("Power", _entity(opts.get(OPT_BOILER_POWER_ENTITY))),
         _row("On/off", _entity(opts.get(OPT_BOILER_SWITCH_ENTITY))),
         _row("Pumps", _entities(opts.get(OPT_BOILER_PUMPS))),
-        _row("Rooms", _entities(plain)),
-        _row("Bedroom rooms", _entities(bedrooms)),
+        "",
+        "Demand comes from the devices and zones above, each measured against "
+        "the target it is actually driven to, offset included.",
         "",
     ]
-    return lines
 
 
 def _conflicts_section(opts: dict[str, Any]) -> list[str]:
@@ -249,7 +257,7 @@ def configuration_summary(options: dict[str, Any] | None) -> str:
     lines: list[str] = []
     lines += _schedule_section(opts)
     lines += _devices_section(opts)
-    lines += _branches_section(opts)
+    lines += _zones_section(opts)
     lines += _boiler_section(opts)
     lines += _conflicts_section(opts)
     return "\n".join(lines).rstrip()

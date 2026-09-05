@@ -35,6 +35,8 @@ ROOM_IS_BEDROOM = "is_bedroom"
 BRANCH_ID = "id"
 BRANCH_NAME = "name"
 BRANCH_SENSORS = "sensors"
+BRANCH_OFFSET = "offset"
+BRANCH_IS_BEDROOM = "is_bedroom"
 BRANCH_ACTUATOR = "actuator"
 BRANCH_PUMP = "pump"
 BRANCH_HYSTERESIS = "hysteresis"
@@ -72,7 +74,6 @@ DEFAULTS: dict = {
     OPT_BED_NIGHT_TO_DAY: "07:00:00",
     OPT_DEVICES: [],
     OPT_BRANCHES: [],
-    OPT_BOILER_ROOMS: [],
     OPT_BOILER_POWER_ENTITY: None,
     OPT_BOILER_SWITCH_ENTITY: None,
     OPT_BOILER_PUMPS: [],

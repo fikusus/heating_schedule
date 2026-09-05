@@ -1,42 +1,55 @@
 """Boiler power-level controller for heating_schedule.
 
-Computes max(target - ambient) across configured rooms; maps to power level
-[1..100] and on/off switch state. Mirrors the original automation:
+Demand arrives already computed, as one shortfall per room:
 
-    diff_per_room = target - ambient
-    max_diff = max(diffs)
+    shortfall = target - ambient
+
+The coordinator produces those, because it is the part that knows each room's
+target including its offset. This module only maps the worst shortfall onto a
+power level and an on/off state:
+
+    max_diff = max(shortfalls)
     clamped  = clamp(max_diff, 0, 1)
     power    = round(clamped * 99 + 1)
     switch   = OFF if max_diff < 0 else ON
+
+Earlier versions read a separate list of room sensors of their own. That list
+duplicated what the climate entities already knew, and comparing against the
+bare schedule target meant a room's offset was ignored: a room driven to
+target + 1.0 was assessed as if it were driven to target, so the boiler
+consistently under-read demand exactly where it had been raised by hand.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Callable
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.core import HomeAssistant
 
 from .const import (
     OPT_BOILER_ENABLED,
     OPT_BOILER_KEEP_ON,
     OPT_BOILER_POWER_ENTITY,
     OPT_BOILER_PUMPS,
-    OPT_BOILER_ROOMS,
     OPT_BOILER_SUMMER,
     OPT_BOILER_SWITCH_ENTITY,
-    ROOM_IS_BEDROOM,
-    ROOM_SENSOR,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+EMPTY_STATE: dict[str, Any] = {
+    "max_diff": None,
+    "power": None,
+    "switch": None,
+    "active": False,
+}
+
 
 class BoilerController:
-    """Reacts to ambient sensor / target / config changes; drives power and on/off."""
+    """Maps room shortfalls onto boiler power, on/off state and pumps."""
 
     def __init__(
         self,
@@ -47,72 +60,19 @@ class BoilerController:
         self.hass = hass
         self.entry = entry
         self.coordinator = coordinator
-        self._unsub_state: Callable[[], None] | None = None
-
-    async def async_setup(self) -> None:
-        self._register_state_listener()
-
-    async def async_teardown(self) -> None:
-        if self._unsub_state:
-            self._unsub_state()
-            self._unsub_state = None
-
-    def reload_state_listener(self) -> None:
-        """Re-register the ambient-sensor state listener (after options change)."""
-        self._register_state_listener()
-
-    def _register_state_listener(self) -> None:
-        if self._unsub_state:
-            self._unsub_state()
-            self._unsub_state = None
-
-        rooms = (self.entry.options or {}).get(OPT_BOILER_ROOMS) or []
-        sensors = [r[ROOM_SENSOR] for r in rooms if r.get(ROOM_SENSOR)]
-        if not sensors:
-            return
-
-        self._unsub_state = async_track_state_change_event(
-            self.hass, sensors, self._on_sensor_change
-        )
-
-    @callback
-    def _on_sensor_change(self, _event) -> None:
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
 
     async def evaluate_and_apply(
-        self,
-        opts: dict[str, Any],
-        main_target: float,
-        bed_target: float,
+        self, opts: dict[str, Any], shortfalls: list[float]
     ) -> dict[str, Any]:
-        """Compute boiler state and call services. Return state dict for sensors."""
-        empty = {"max_diff": None, "power": None, "switch": None, "active": False}
-
+        """Compute boiler state and call services. Return state for the sensors."""
         if not opts.get(OPT_BOILER_ENABLED, False):
-            return empty
+            return dict(EMPTY_STATE)
         if opts.get(OPT_BOILER_SUMMER, False):
-            return empty
+            return dict(EMPTY_STATE)
+        if not shortfalls:
+            return dict(EMPTY_STATE)
 
-        rooms = opts.get(OPT_BOILER_ROOMS) or []
-        diffs: list[float] = []
-        for r in rooms:
-            sensor_id = r.get(ROOM_SENSOR)
-            if not sensor_id:
-                continue
-            state = self.hass.states.get(sensor_id)
-            if state is None or state.state in ("unavailable", "unknown"):
-                continue
-            try:
-                temp = float(state.state)
-            except (TypeError, ValueError):
-                continue
-            target = bed_target if r.get(ROOM_IS_BEDROOM) else main_target
-            diffs.append(target - temp)
-
-        if not diffs:
-            return empty
-
-        max_diff = math.floor(max(diffs) * 100) / 100      # 2-decimal floor
+        max_diff = math.floor(max(shortfalls) * 100) / 100  # 2-decimal floor
         clamped = max(0.0, min(max_diff, 1.0))
         power = int(round(clamped * 99 + 1))
 
@@ -128,6 +88,7 @@ class BoilerController:
             "power": power,
             "switch": switch_target,
             "keep_on": keep_on,
+            "rooms": len(shortfalls),
             "active": True,
         }
 

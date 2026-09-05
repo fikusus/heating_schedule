@@ -44,6 +44,25 @@ _LOGGER = logging.getLogger(__name__)
 _UNUSABLE = ("unavailable", "unknown")
 
 
+def read_min_temperature(hass: HomeAssistant, entity_ids) -> float | None:
+    """Coldest readable sensor of a set, or None if none can be read.
+
+    The coldest reading governs a zone, matching how the boiler has always
+    picked the room furthest from its target. Shared by the climate entity
+    that displays it and the coordinator that computes demand from it.
+    """
+    readings: list[float] = []
+    for entity_id in entity_ids or []:
+        state = hass.states.get(entity_id)
+        if state is None or state.state in _UNUSABLE:
+            continue
+        try:
+            readings.append(float(state.state))
+        except (TypeError, ValueError):
+            continue
+    return min(readings) if readings else None
+
+
 class BranchController:
     """Drives one branch's actuator and pump, and keeps them interlocked."""
 

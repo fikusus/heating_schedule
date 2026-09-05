@@ -9,11 +9,19 @@ from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_change,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .branch import read_min_temperature
 from .const import (
+    BRANCH_ID,
+    BRANCH_IS_BEDROOM,
+    BRANCH_OFFSET,
+    BRANCH_SENSORS,
     DEFAULTS,
     DEV_ENTITY_ID,
     DEV_IS_BEDROOM,
@@ -23,6 +31,7 @@ from .const import (
     OPT_BED_NIGHT_TEMP,
     OPT_BED_NIGHT_TO_DAY,
     OPT_BOILER_SUMMER,
+    OPT_BRANCHES,
     OPT_DAY_TEMP,
     OPT_DAY_TO_NIGHT,
     OPT_DEVICES,
@@ -36,6 +45,8 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_UNUSABLE = ("unavailable", "unknown")
 
 
 def _mins(t: time) -> int:
@@ -91,6 +102,13 @@ def compute_target(phase: str, day_temp: float, night_temp: float) -> float:
     return round((day_temp + night_temp)) / 2
 
 
+def _with_offset(base: float, offset: Any) -> float:
+    try:
+        return round((base + float(offset)) * 2) / 2
+    except (TypeError, ValueError):
+        return base
+
+
 def _boundary_times(
     day_to_night: time,
     night_to_day: time,
@@ -117,10 +135,12 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self.boiler = None  # set by __init__.py after construction
         self._unsub_times: list[Callable[[], None]] = []
+        self._unsub_states: Callable[[], None] | None = None
         self._unsub_options: Callable[[], None] | None = None
 
     async def async_setup(self) -> None:
         self._register_time_listeners()
+        self._register_state_listeners()
         self._unsub_options = self.entry.add_update_listener(self._on_options)
         await self.async_refresh()
 
@@ -128,6 +148,9 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for unsub in self._unsub_times:
             unsub()
         self._unsub_times.clear()
+        if self._unsub_states:
+            self._unsub_states()
+            self._unsub_states = None
         if self._unsub_options:
             self._unsub_options()
             self._unsub_options = None
@@ -162,16 +185,47 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._unsub_times.append(unsub)
 
+    def _register_state_listeners(self) -> None:
+        """Watch everything that feeds boiler demand.
+
+        That is the tracked climate entities, whose current_temperature is now
+        the ambient reading, and the sensors behind each zone. The boiler used
+        to keep this subscription for a room list of its own; there is no such
+        list any more.
+        """
+        if self._unsub_states:
+            self._unsub_states()
+            self._unsub_states = None
+
+        opts = self._opts()
+        watched = {
+            d[DEV_ENTITY_ID]
+            for d in opts.get(OPT_DEVICES, []) or []
+            if d.get(DEV_ENTITY_ID)
+        }
+        for branch in opts.get(OPT_BRANCHES, []) or []:
+            watched.update(s for s in branch.get(BRANCH_SENSORS) or [] if s)
+
+        if not watched:
+            return
+
+        self._unsub_states = async_track_state_change_event(
+            self.hass, sorted(watched), self._async_source_changed
+        )
+
     @callback
     def _async_boundary_reached(self, _now: datetime) -> None:
         self.hass.async_create_task(self.async_refresh())
+
+    @callback
+    def _async_source_changed(self, _event) -> None:
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def _on_options(
         self, _hass: HomeAssistant, _entry: ConfigEntry
     ) -> None:
         self._register_time_listeners()
-        if self.boiler is not None:
-            self.boiler.reload_state_listener()
+        self._register_state_listeners()
         await self.async_refresh()
 
     def _opts(self) -> dict[str, Any]:
@@ -203,7 +257,11 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         main_target = compute_target(main_phase, day_t, night_t)
         bed_target = compute_target(bed_phase, day_t, bed_night_t)
 
-        await self._apply_to_devices(opts, main_target, bed_target)
+        shortfalls = await self._apply_to_devices(opts, main_target, bed_target)
+        zone_targets, zone_shortfalls = self._evaluate_zones(
+            opts, main_target, bed_target
+        )
+        shortfalls.extend(zone_shortfalls)
 
         boiler_state: dict[str, Any] = {
             "max_diff": None,
@@ -212,15 +270,14 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "active": False,
         }
         if self.boiler is not None:
-            boiler_state = await self.boiler.evaluate_and_apply(
-                opts, main_target, bed_target
-            )
+            boiler_state = await self.boiler.evaluate_and_apply(opts, shortfalls)
 
         return {
             "main_phase": main_phase,
             "bed_phase": bed_phase,
             "main_target": main_target,
             "bed_target": bed_target,
+            "zone_targets": zone_targets,
             "boiler": boiler_state,
         }
 
@@ -229,23 +286,36 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         opts: dict,
         main_target: float,
         bed_target: float,
-    ) -> None:
+    ) -> list[float]:
+        """Push targets to the tracked climate entities and read back demand.
+
+        The shortfall is measured against the target the device is actually
+        driven to, offset included, so a room deliberately kept warmer is not
+        assessed as if it were not.
+        """
         summer = bool(opts.get(OPT_BOILER_SUMMER, False))
+        shortfalls: list[float] = []
         tasks = []
+
         for dev in opts.get(OPT_DEVICES, []) or []:
             entity_id: str = dev[DEV_ENTITY_ID]
 
             state = self.hass.states.get(entity_id)
-            if state is None or state.state in ("unavailable", "unknown"):
+            if state is None or state.state in _UNUSABLE:
                 _LOGGER.debug("Skipping %s — state %s", entity_id, state)
                 continue
 
             if summer:
                 target = _max_temp_for(state)
             else:
-                offset = float(dev.get(DEV_OFFSET, 0.0))
                 base = bed_target if dev.get(DEV_IS_BEDROOM) else main_target
-                target = round((base + offset) * 2) / 2
+                target = _with_offset(base, dev.get(DEV_OFFSET, 0.0))
+                ambient = state.attributes.get("current_temperature")
+                if ambient is not None:
+                    try:
+                        shortfalls.append(target - float(ambient))
+                    except (TypeError, ValueError):
+                        pass
 
             tasks.append(
                 self.hass.services.async_call(
@@ -261,6 +331,39 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for r in results:
                 if isinstance(r, Exception):
                     _LOGGER.warning("set_temperature failed: %s", r)
+
+        return shortfalls
+
+    def _evaluate_zones(
+        self, opts: dict, main_target: float, bed_target: float
+    ) -> tuple[dict[str, float], list[float]]:
+        """Target and shortfall for every zone this integration owns.
+
+        Zones are driven from here rather than through a service call to our own
+        climate entities: the entity reads its target straight out of the
+        coordinator data.
+        """
+        targets: dict[str, float] = {}
+        shortfalls: list[float] = []
+        summer = bool(opts.get(OPT_BOILER_SUMMER, False))
+
+        for branch in opts.get(OPT_BRANCHES, []) or []:
+            branch_id = branch.get(BRANCH_ID)
+            if not branch_id:
+                continue
+            base = bed_target if branch.get(BRANCH_IS_BEDROOM) else main_target
+            target = _with_offset(base, branch.get(BRANCH_OFFSET, 0.0))
+            targets[branch_id] = target
+
+            if summer:
+                continue
+            ambient = read_min_temperature(
+                self.hass, branch.get(BRANCH_SENSORS) or []
+            )
+            if ambient is not None:
+                shortfalls.append(target - ambient)
+
+        return targets, shortfalls
 
 
 def _max_temp_for(state) -> float:

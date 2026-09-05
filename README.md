@@ -9,10 +9,11 @@ boiler control.
 - Day and night target temperatures with a configurable transition ramp.
 - Separate night temperature and schedule for bedrooms.
 - Per-device temperature offset, adjustable at runtime.
-- Boiler control: power target, max room/target difference, summer mode,
-  keep-on mode and circulation pumps.
-- Heating branches with their own valve and pump, presented as climate
-  entities and interlocked so the pump cannot run against a closed valve.
+- Boiler control driven by the climate entities themselves, so each room is
+  assessed against the target it is actually held at, offset included.
+- Zones: heating branches with their own valve and pump, interlocked so the pump
+  cannot run against a closed valve, and sensor-only zones for rooms whose
+  thermostatic head reports a poor temperature or none at all.
 - A companion Lovelace card, distributed separately as
   [heating-schedule-card][card].
 
@@ -40,8 +41,11 @@ configured afterwards through **Configure**:
   times and transition duration.
 - **Devices** — the `climate` entities to drive, each with its own offset and a
   "bedroom" flag that selects the bedroom schedule.
-- **Boiler** — power and switch entities, pumps, and the rooms whose sensors
-  feed the boiler logic.
+- **Zones** — heating branches with a valve and pump, or sensor-only zones.
+  Each carries its own sensors, offset and bedroom flag.
+- **Boiler** — the power and switch entities and any pumps that follow the
+  boiler directly. There is no room list: demand comes from the devices and
+  zones.
 
 ## Configuration overview
 
@@ -57,15 +61,24 @@ existed can still carry one. Sensors read by two sections are not flagged —
 that is ordinary, and marking it would bury the conflicts that matter.
 
 
-## Heating branches
+## Zones
 
-A branch is a heating loop with its own temperature sensors, a valve actuator
-and a circulation pump. Add one under **Configure → Add heating branch**, and it
-appears as a climate entity you can drive by hand, from the card, or by adding
-it to the tracked devices so the schedule sets its target like any other head.
+A zone is a room or loop with its own temperature sensors, an offset and a
+bedroom flag, presented as a climate entity. The schedule sets its target the
+way it sets any device's, and its shortfall feeds the boiler.
 
-Control is a plain hysteresis loop around the coldest sensor on the branch.
-Underneath it sits one rule that is not part of that loop:
+Two kinds, both under **Configure**:
+
+- **Heating branch** — owns a valve actuator and a circulation pump, and
+  controls them with a hysteresis loop around its coldest sensor.
+- **Sensor-only zone** — controls nothing. It exists to give the boiler an
+  honest reading for a room, with that room's offset applied. Use it wherever a
+  thermostatic head measures the air beside the radiator, or reports no
+  temperature at all.
+
+### The pump interlock
+
+Under a branch's control loop sits one rule that is not part of it:
 
 > the pump runs only while the actuator is confirmed open
 
@@ -76,14 +89,29 @@ must not be enough to cause that. Starting up opens the valve, waits out the
 actuator travel time, then starts the pump. Shutting down stops the pump first,
 and is never delayed by anything.
 
-Per branch you configure the sensors, the actuator and pump switches, the
-hysteresis, the actuator travel time (around 180 s for a thermoelectric head,
-30 s for a motorised one) and a minimum interval between pump starts, which
-guards against short cycling. `hvac_action` reports `preheating` while heat is
-wanted but the pump is still held back, so a waiting branch does not look idle.
+Per branch you configure the actuator and pump switches, the hysteresis, the
+actuator travel time (around 180 s for a thermoelectric head, 30 s for a
+motorised one) and a minimum interval between pump starts, which guards against
+short cycling. `hvac_action` reports `preheating` while heat is wanted but the
+pump is still held back, so a waiting branch does not look idle.
 
-Summer mode stops branches outright rather than driving them to maximum the way
-it does with ordinary climate devices.
+A pump cannot be configured without an actuator: with no valve to confirm open,
+the interlock would never let it start.
+
+Summer mode stops zones outright rather than driving them to maximum the way it
+does with ordinary climate devices.
+
+### How the boiler reads demand
+
+Each tracked device and each zone contributes one shortfall, `target - ambient`,
+measured against the target it is actually driven to. The worst one sets the
+power level. Devices supply their `current_temperature`; zones supply their
+coldest sensor.
+
+Because the target includes the offset, a room deliberately kept a degree warmer
+now counts as such. Earlier versions compared against the bare schedule target,
+so raising a room's offset quietly left the boiler under-reading demand in
+exactly that room.
 
 ### One owner per switch
 

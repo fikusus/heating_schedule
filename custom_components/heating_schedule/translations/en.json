@@ -21,10 +21,9 @@
           "edit_devices": "Edit / remove device",
           "boiler_settings": "Boiler: power & switch entities",
           "boiler_pumps": "Boiler: pumps (smart sockets)",
-          "add_boiler_room": "Boiler: add room sensor",
-          "edit_boiler_rooms": "Boiler: edit / remove room",
           "add_branch": "Add heating branch",
-          "edit_branches": "Edit / remove heating branch"
+          "edit_branches": "Edit / remove zone",
+          "add_zone": "Add sensor-only zone"
         }
       },
       "globals": {
@@ -81,29 +80,6 @@
           "boiler_pumps": "Pump switches"
         }
       },
-      "add_boiler_room": {
-        "title": "Add boiler room sensor",
-        "description": "Pick a temperature sensor and mark whether it represents the bedroom (uses the bedroom target).",
-        "data": {
-          "sensor": "Temperature sensor",
-          "is_bedroom": "Bedroom"
-        }
-      },
-      "edit_boiler_rooms": {
-        "title": "Edit boiler room",
-        "description": "Pick a room to edit or remove.",
-        "data": {
-          "room": "Room sensor"
-        }
-      },
-      "edit_boiler_room": {
-        "title": "Edit {sensor}",
-        "description": "Change the bedroom flag or remove this room.",
-        "data": {
-          "is_bedroom": "Bedroom",
-          "remove": "Remove this room"
-        }
-      },
       "add_branch": {
         "title": "Add heating branch",
         "description": "The pump runs only while the actuator is confirmed open. Travel time is how long the actuator needs before the pump may start: around 180 s for a thermoelectric head, 30 s for a motorised one.",
@@ -114,11 +90,13 @@
           "pump": "Pump switch",
           "hysteresis": "Hysteresis (°C)",
           "actuator_travel_s": "Actuator travel time (s)",
-          "min_cycle_s": "Minimum pump restart interval (s)"
+          "min_cycle_s": "Minimum pump restart interval (s)",
+          "offset": "Offset (°C)",
+          "is_bedroom": "Bedroom"
         }
       },
       "edit_branches": {
-        "title": "Edit heating branch",
+        "title": "Edit / remove zone",
         "data": {
           "branch": "Branch"
         }
@@ -134,22 +112,33 @@
           "hysteresis": "Hysteresis (°C)",
           "actuator_travel_s": "Actuator travel time (s)",
           "min_cycle_s": "Minimum pump restart interval (s)",
-          "remove": "Remove branch"
+          "remove": "Remove branch",
+          "offset": "Offset (°C)",
+          "is_bedroom": "Bedroom"
+        }
+      },
+      "add_zone": {
+        "title": "Add sensor-only zone",
+        "description": "A zone with sensors but no valve or pump. It controls nothing; it gives the boiler an honest reading for this room, with the zone offset applied.",
+        "data": {
+          "name": "Name",
+          "sensors": "Temperature sensors",
+          "offset": "Offset (°C)",
+          "is_bedroom": "Bedroom"
         }
       }
     },
     "abort": {
       "no_devices": "No devices configured yet. Use 'Add climate device'.",
       "device_not_found": "Selected device no longer exists.",
-      "no_rooms": "No boiler rooms configured yet. Use 'Boiler: add room sensor'.",
-      "room_not_found": "Selected room no longer exists.",
       "no_branches": "No heating branches configured. Use \"Add heating branch\".",
       "branch_not_found": "The selected branch no longer exists."
     },
     "error": {
       "no_sensors": "Pick at least one temperature sensor, otherwise the branch can never decide to heat.",
       "same_entity": "The actuator and the pump must be different switches.",
-      "entity_in_use": "This entity is already driven elsewhere in this integration. A valve or pump must have exactly one owner."
+      "entity_in_use": "This entity is already driven elsewhere in this integration. A valve or pump must have exactly one owner.",
+      "pump_needs_actuator": "A pump needs an actuator. The interlock only lets the pump run while the valve is confirmed open, so a pump with no valve would never start."
     }
   },
   "entity": {
