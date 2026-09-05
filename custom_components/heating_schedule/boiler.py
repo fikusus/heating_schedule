@@ -66,10 +66,27 @@ class BoilerController:
     ) -> dict[str, Any]:
         """Compute boiler state and call services. Return state for the sensors."""
         if not opts.get(OPT_BOILER_ENABLED, False):
+            # Control is off: the user wants the boiler left to itself, so we
+            # release it rather than forcing a state on the way out.
+            _LOGGER.debug("Boiler control disabled, leaving the boiler alone")
             return dict(EMPTY_STATE)
+
         if opts.get(OPT_BOILER_SUMMER, False):
+            # Summer means no heating at all. Returning early used to leave the
+            # boiler running at whatever it happened to be, forever.
+            _LOGGER.debug("Summer mode, shutting the boiler down")
+            await self._apply_switch(opts.get(OPT_BOILER_SWITCH_ENTITY), "off")
+            await self._apply_pumps(opts.get(OPT_BOILER_PUMPS) or [], "off")
             return dict(EMPTY_STATE)
+
         if not shortfalls:
+            # No room could be read. Running blind is worse than holding, so
+            # hold -- but say so, because silence here looks like a stuck boiler.
+            _LOGGER.warning(
+                "No readable room temperature; boiler left as it is. Check that "
+                "the tracked climate entities report current_temperature, or add "
+                "a sensor-only zone for the rooms that do not."
+            )
             return dict(EMPTY_STATE)
 
         max_diff = math.floor(max(shortfalls) * 100) / 100  # 2-decimal floor
@@ -78,6 +95,15 @@ class BoilerController:
 
         keep_on = bool(opts.get(OPT_BOILER_KEEP_ON, False))
         switch_target = "on" if (max_diff >= 0 or keep_on) else "off"
+
+        _LOGGER.debug(
+            "Boiler: rooms=%d max_diff=%.2f power=%d keep_on=%s -> %s",
+            len(shortfalls),
+            max_diff,
+            power,
+            keep_on,
+            switch_target,
+        )
 
         await self._apply_power(opts.get(OPT_BOILER_POWER_ENTITY), power)
         await self._apply_switch(opts.get(OPT_BOILER_SWITCH_ENTITY), switch_target)
@@ -109,9 +135,12 @@ class BoilerController:
         if not switch_entity:
             return
         if self.hass.states.get(switch_entity) is None:
-            _LOGGER.debug("Boiler switch entity %s not found, skipping", switch_entity)
+            _LOGGER.warning(
+                "Boiler switch entity %s does not exist, skipping", switch_entity
+            )
             return
         service = "turn_on" if target == "on" else "turn_off"
+        _LOGGER.debug("Boiler switch %s -> %s", switch_entity, service)
         await self.hass.services.async_call(
             "switch",
             service,
@@ -125,6 +154,7 @@ class BoilerController:
         if not valid:
             return
         service = "turn_on" if target == "on" else "turn_off"
+        _LOGGER.debug("Boiler pumps %s -> %s", valid, service)
         await self.hass.services.async_call(
             "switch",
             service,
