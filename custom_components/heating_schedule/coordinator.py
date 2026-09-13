@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_change,
@@ -303,9 +304,22 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         summer = bool(opts.get(OPT_BOILER_SUMMER, False))
         demand: list[dict[str, Any]] = []
         tasks = []
+        own_zones = self._own_zone_entities()
 
         for dev in opts.get(OPT_DEVICES, []) or []:
             entity_id: str = dev[DEV_ENTITY_ID]
+
+            if entity_id in own_zones:
+                # One of our own zones, listed as a tracked device as well.
+                # Older documentation asked for exactly that, and it drives the
+                # zone twice from two different offsets. The zone config wins.
+                _LOGGER.warning(
+                    "%s is a zone of this integration and is also listed as a "
+                    "tracked device; ignoring the device entry. Remove it under "
+                    "Configure to silence this.",
+                    entity_id,
+                )
+                continue
 
             state = self.hass.states.get(entity_id)
             if state is None or state.state in _UNUSABLE:
@@ -344,6 +358,17 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.warning("set_temperature failed: %s", r)
 
         return demand
+
+    def _own_zone_entities(self) -> set[str]:
+        """Climate entities this integration publishes for its own zones."""
+        registry = er.async_get(self.hass)
+        return {
+            entity.entity_id
+            for entity in er.async_entries_for_config_entry(
+                registry, self.entry.entry_id
+            )
+            if entity.domain == "climate"
+        }
 
     def _evaluate_zones(
         self, opts: dict, main_target: float, bed_target: float

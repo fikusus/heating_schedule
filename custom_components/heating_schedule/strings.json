@@ -138,7 +138,8 @@
       "no_sensors": "Pick at least one temperature sensor, otherwise the branch can never decide to heat.",
       "same_entity": "The actuator and the pump must be different switches.",
       "entity_in_use": "This entity is already driven elsewhere in this integration. A valve or pump must have exactly one owner.",
-      "pump_needs_actuator": "A pump needs an actuator. The interlock only lets the pump run while the valve is confirmed open, so a pump with no valve would never start."
+      "pump_needs_actuator": "A pump needs an actuator. The interlock only lets the pump run while the valve is confirmed open, so a pump with no valve would never start.",
+      "own_zone": "This is one of this integration's own zones. It already gets its target from the schedule; adding it here would drive it twice."
     }
   },
   "entity": {
