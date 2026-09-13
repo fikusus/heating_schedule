@@ -90,9 +90,7 @@
           "pump": "Pump switch",
           "hysteresis": "Hysteresis (°C)",
           "actuator_travel_s": "Actuator travel time (s)",
-          "min_cycle_s": "Minimum pump restart interval (s)",
-          "offset": "Offset (°C)",
-          "is_bedroom": "Bedroom"
+          "min_cycle_s": "Minimum pump restart interval (s)"
         }
       },
       "edit_branches": {
@@ -112,9 +110,7 @@
           "hysteresis": "Hysteresis (°C)",
           "actuator_travel_s": "Actuator travel time (s)",
           "min_cycle_s": "Minimum pump restart interval (s)",
-          "remove": "Remove branch",
-          "offset": "Offset (°C)",
-          "is_bedroom": "Bedroom"
+          "remove": "Remove branch"
         }
       },
       "add_zone": {
@@ -122,9 +118,7 @@
         "description": "A zone with sensors but no valve or pump. It controls nothing; it gives the boiler an honest reading for this room, with the zone offset applied.",
         "data": {
           "name": "Name",
-          "sensors": "Temperature sensors",
-          "offset": "Offset (°C)",
-          "is_bedroom": "Bedroom"
+          "sensors": "Temperature sensors"
         }
       }
     },
@@ -138,8 +132,7 @@
       "no_sensors": "Pick at least one temperature sensor, otherwise the branch can never decide to heat.",
       "same_entity": "The actuator and the pump must be different switches.",
       "entity_in_use": "This entity is already driven elsewhere in this integration. A valve or pump must have exactly one owner.",
-      "pump_needs_actuator": "A pump needs an actuator. The interlock only lets the pump run while the valve is confirmed open, so a pump with no valve would never start.",
-      "own_zone": "This is one of this integration's own zones. It already gets its target from the schedule; adding it here would drive it twice."
+      "pump_needs_actuator": "A pump needs an actuator. The interlock only lets the pump run while the valve is confirmed open, so a pump with no valve would never start."
     }
   },
   "entity": {

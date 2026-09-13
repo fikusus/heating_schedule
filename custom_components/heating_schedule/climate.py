@@ -1,13 +1,17 @@
 """Climate platform: every zone is presented as a thermostat.
 
-A zone is a room or loop with its own temperature sensors, an offset and a
-bedroom flag. Some also own a valve actuator and a circulation pump; those are
-the heating branches, and their hardware is driven by BranchController, which
-holds the interlock keeping the pump off while the valve is shut. A zone with no
-hardware controls nothing and exists to contribute an honest ambient reading,
-with its offset applied, to the boiler's demand calculation -- useful wherever a
-thermostatic head measures the air by the radiator, or reports no temperature at
-all.
+A zone is a room or loop with its own temperature sensors. Some also own a valve
+actuator and a circulation pump; those are the heating branches, and their
+hardware is driven by BranchController, which holds the interlock keeping the
+pump off while the valve is shut. A zone with no hardware controls nothing and
+exists to report an ambient temperature -- useful wherever a thermostatic head
+measures the air by the radiator, or reports none at all.
+
+Being a climate entity is the whole point: a zone is added to the tracked
+devices like any thermostatic head, and from there the schedule sets its target
+and its offset exactly as it does for the rest. There is no second, private
+channel -- an earlier version had one, and its target quietly overwrote the one
+the schedule had just set, which looked like the device offset being ignored.
 
 Policy lives here: sensors, setpoint, hysteresis, hvac_mode. It asks the
 controller to heat or stop, and the controller may refuse.
@@ -28,17 +32,15 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .branch import BranchController, read_min_temperature
 from .const import (
     BRANCH_ACTUATOR,
     BRANCH_HYSTERESIS,
     BRANCH_ID,
-    BRANCH_IS_BEDROOM,
     BRANCH_NAME,
-    BRANCH_OFFSET,
     BRANCH_PUMP,
     BRANCH_SENSORS,
     DATA_BRANCHES,
@@ -53,7 +55,6 @@ from .const import (
     TEMP_MIN,
     TEMP_STEP,
 )
-from .coordinator import HeatingScheduleCoordinator
 
 
 async def async_setup_entry(
@@ -61,25 +62,21 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: HeatingScheduleCoordinator = hass.data[DOMAIN][entry.entry_id]
     controllers: dict[str, BranchController] = hass.data[DOMAIN][
         f"{entry.entry_id}_{DATA_BRANCHES}"
     ]
     async_add_entities(
-        HeatingZoneClimate(
-            coordinator, entry, branch, controllers.get(branch[BRANCH_ID])
-        )
-        for branch in entry.options.get(OPT_BRANCHES, []) or []
-        if branch.get(BRANCH_ID)
+        HeatingZoneClimate(entry, zone, controllers.get(zone[BRANCH_ID]))
+        for zone in entry.options.get(OPT_BRANCHES, []) or []
+        if zone.get(BRANCH_ID)
     )
 
 
-class HeatingZoneClimate(
-    CoordinatorEntity[HeatingScheduleCoordinator], ClimateEntity, RestoreEntity
-):
+class HeatingZoneClimate(ClimateEntity, RestoreEntity):
     """A zone, behaving like a thermostatic head."""
 
     _attr_has_entity_name = True
+    _attr_should_poll = False
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = (
@@ -95,18 +92,17 @@ class HeatingZoneClimate(
 
     def __init__(
         self,
-        coordinator: HeatingScheduleCoordinator,
         entry: ConfigEntry,
-        branch: dict[str, Any],
+        zone: dict[str, Any],
         controller: BranchController | None,
     ) -> None:
-        super().__init__(coordinator)
         self._entry = entry
-        self._branch_id: str = branch[BRANCH_ID]
+        self._branch_id: str = zone[BRANCH_ID]
         self._controller = controller
         self._demand = False
+        self._unsub_sensors = None
         self._attr_unique_id = f"{entry.entry_id}_branch_{self._branch_id}"
-        self._attr_name = branch.get(BRANCH_NAME) or "Zone"
+        self._attr_name = zone.get(BRANCH_NAME) or "Zone"
         self._attr_icon = "mdi:pipe-valve" if controller else "mdi:home-thermometer"
         self._attr_hvac_mode = HVACMode.HEAT
         self._attr_target_temperature: float | None = None
@@ -123,37 +119,48 @@ class HeatingZoneClimate(
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
-        # Only the mode is restored. The setpoint comes from the schedule on
-        # every coordinator pass, so remembering one would just be overwritten.
+        # Restoring both matters: until the zone is added to the tracked devices
+        # nothing sets its target, and a blank setpoint would mean it can never
+        # decide to heat.
         last = await self.async_get_last_state()
-        if last is not None and last.state in (HVACMode.HEAT, HVACMode.OFF):
-            self._attr_hvac_mode = HVACMode(last.state)
+        if last is not None:
+            if last.state in (HVACMode.HEAT, HVACMode.OFF):
+                self._attr_hvac_mode = HVACMode(last.state)
+            restored = last.attributes.get(ATTR_TEMPERATURE)
+            if restored is not None:
+                try:
+                    self._attr_target_temperature = float(restored)
+                except (TypeError, ValueError):
+                    pass
 
+        self._subscribe_sensors()
         if self._controller is not None:
             self.async_on_remove(
                 self._controller.add_listener(self._async_branch_changed)
             )
-        self._pull_target()
+        self.async_on_remove(
+            self._entry.add_update_listener(self._async_options_changed)
+        )
         await self._async_control()
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """New schedule pass: adopt the target and re-decide."""
-        self._pull_target()
-        self.hass.async_create_task(self._async_control_and_write())
-
-    def _pull_target(self) -> None:
-        targets = (self.coordinator.data or {}).get("zone_targets") or {}
-        target = targets.get(self._branch_id)
-        if target is not None:
-            self._attr_target_temperature = float(target)
+    def _subscribe_sensors(self) -> None:
+        if self._unsub_sensors is not None:
+            self._unsub_sensors()
+            self._unsub_sensors = None
+        sensors = [s for s in self._config().get(BRANCH_SENSORS) or [] if s]
+        if not sensors:
+            return
+        self._unsub_sensors = async_track_state_change_event(
+            self.hass, sensors, self._async_sensor_changed
+        )
+        self.async_on_remove(self._unsub_sensors)
 
     # ---------------------------------------------------------------- config
 
     def _config(self) -> dict[str, Any]:
-        for branch in self._entry.options.get(OPT_BRANCHES, []) or []:
-            if branch.get(BRANCH_ID) == self._branch_id:
-                return branch
+        for zone in self._entry.options.get(OPT_BRANCHES, []) or []:
+            if zone.get(BRANCH_ID) == self._branch_id:
+                return zone
         return {}
 
     # ------------------------------------------------------------- readbacks
@@ -187,8 +194,6 @@ class HeatingZoneClimate(
         cfg = self._config()
         return {
             "sensors": cfg.get(BRANCH_SENSORS) or [],
-            "offset": cfg.get(BRANCH_OFFSET, 0.0),
-            "is_bedroom": bool(cfg.get(BRANCH_IS_BEDROOM, False)),
             "actuator": cfg.get(BRANCH_ACTUATOR),
             "pump": cfg.get(BRANCH_PUMP),
             "hysteresis": self._hysteresis(),
@@ -208,7 +213,7 @@ class HeatingZoneClimate(
     # -------------------------------------------------------------- commands
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Override the setpoint until the next schedule pass overwrites it."""
+        """Set the setpoint. This is how the schedule reaches a zone."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
@@ -259,6 +264,15 @@ class HeatingZoneClimate(
         self.async_write_ha_state()
 
     @callback
+    def _async_sensor_changed(self, _event) -> None:
+        self.hass.async_create_task(self._async_control_and_write())
+
+    @callback
     def _async_branch_changed(self) -> None:
         """The controller moved the valve or the pump; hvac_action changed."""
         self.async_write_ha_state()
+
+    async def _async_options_changed(self, _hass, _entry) -> None:
+        if self._controller is not None:
+            self._controller.update_config(self._config())
+        await self._async_control_and_write()

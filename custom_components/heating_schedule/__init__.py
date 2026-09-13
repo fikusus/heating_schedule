@@ -16,10 +16,8 @@ from .const import (
     BRANCH_ACTUATOR,
     BRANCH_HYSTERESIS,
     BRANCH_ID,
-    BRANCH_IS_BEDROOM,
     BRANCH_MIN_CYCLE_S,
     BRANCH_NAME,
-    BRANCH_OFFSET,
     BRANCH_PUMP,
     BRANCH_SENSORS,
     BRANCH_TRAVEL_S,
@@ -34,7 +32,6 @@ from .const import (
     OPT_BRANCHES,
     OPT_DEVICES,
     PLATFORMS,
-    ROOM_IS_BEDROOM,
     ROOM_SENSOR,
 )
 from .coordinator import HeatingScheduleCoordinator
@@ -84,8 +81,8 @@ def _migrate_boiler_rooms(
     Boiler demand used to come from a room list of its own, holding sensors that
     the climate entities already knew about and comparing them against the bare
     schedule target, offset excluded. Each of those rooms becomes a zone with the
-    same sensor and bedroom flag, which restores the same readings to the boiler
-    and gives them an offset they never had.
+    same sensor. Add the resulting climate entity to the tracked devices to give
+    it a target, an offset and a bedroom flag.
     """
     if OPT_BOILER_ROOMS not in options:
         return options
@@ -104,8 +101,6 @@ def _migrate_boiler_rooms(
                 BRANCH_ID: uuid4().hex[:8],
                 BRANCH_NAME: _friendly_name(hass, sensor),
                 BRANCH_SENSORS: [sensor],
-                BRANCH_OFFSET: 0.0,
-                BRANCH_IS_BEDROOM: bool(room.get(ROOM_IS_BEDROOM, False)),
                 BRANCH_ACTUATOR: None,
                 BRANCH_PUMP: None,
                 BRANCH_HYSTERESIS: DEFAULT_HYSTERESIS,

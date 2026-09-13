@@ -19,8 +19,6 @@ from .const import (
     BRANCH_MIN_CYCLE_S,
     BRANCH_NAME,
     BRANCH_PUMP,
-    BRANCH_IS_BEDROOM,
-    BRANCH_OFFSET,
     BRANCH_SENSORS,
     BRANCH_TRAVEL_S,
     DEFAULT_HYSTERESIS,
@@ -164,18 +162,12 @@ def _zones_section(opts: dict[str, Any]) -> list[str]:
         actuator = zone.get(BRANCH_ACTUATOR)
         pump = zone.get(BRANCH_PUMP)
         kind = "branch" if (actuator or pump) else "sensors only"
-        try:
-            offset = f"{float(zone.get(BRANCH_OFFSET, 0)):+.1f} °C"
-        except (TypeError, ValueError):
-            offset = _DASH
 
         lines += [
             f"*{name}* — {kind}",
             "",
             *_TABLE_HEAD,
             _row("Sensors", _entities(zone.get(BRANCH_SENSORS))),
-            _row("Offset", offset),
-            _row("Bedroom", "yes" if zone.get(BRANCH_IS_BEDROOM) else "no"),
         ]
         if actuator or pump:
             lines += [
@@ -209,8 +201,9 @@ def _boiler_section(opts: dict[str, Any]) -> list[str]:
         _row("On/off", _entity(opts.get(OPT_BOILER_SWITCH_ENTITY))),
         _row("Pumps", _entities(opts.get(OPT_BOILER_PUMPS))),
         "",
-        "Demand comes from the devices and zones above, each measured against "
-        "the target it is actually driven to, offset included.",
+        "Demand comes from the tracked devices above, each measured against the "
+        "target it is actually driven to, offset included. A zone takes part by "
+        "being added as a device like any other thermostat.",
         "",
     ]
 

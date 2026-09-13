@@ -63,9 +63,11 @@ that is ordinary, and marking it would bury the conflicts that matter.
 
 ## Zones
 
-A zone is a room or loop with its own temperature sensors, an offset and a
-bedroom flag, presented as a climate entity. The schedule sets its target the
-way it sets any device's, and its shortfall feeds the boiler.
+A zone is a room or loop with its own temperature sensors, presented as a
+climate entity. **Add it to the tracked devices like any thermostatic head** —
+that is how it receives its target, its offset and its bedroom flag, and how its
+shortfall reaches the boiler. A zone that is not listed there controls nothing
+and contributes nothing.
 
 Two kinds, both under **Configure**:
 
@@ -103,10 +105,10 @@ does with ordinary climate devices.
 
 ### How the boiler reads demand
 
-Each tracked device and each zone contributes one shortfall, `target - ambient`,
-measured against the target it is actually driven to. The worst one sets the
-power level. Devices supply their `current_temperature`; zones supply their
-coldest sensor.
+Each tracked device contributes one shortfall, `target - ambient`, measured
+against the target it is actually driven to. The worst one sets the power level.
+Every device supplies its own `current_temperature`; for a zone that is the
+coldest of its sensors.
 
 Because the target includes the offset, a room deliberately kept a degree warmer
 now counts as such. Earlier versions compared against the bare schedule target,

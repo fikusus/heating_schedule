@@ -9,7 +9,6 @@ from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_change,
@@ -17,12 +16,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .branch import read_min_temperature
 from .const import (
-    BRANCH_ID,
-    BRANCH_IS_BEDROOM,
-    BRANCH_NAME,
-    BRANCH_OFFSET,
     BRANCH_SENSORS,
     DEFAULTS,
     DEV_ENTITY_ID,
@@ -260,10 +254,6 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         bed_target = compute_target(bed_phase, day_t, bed_night_t)
 
         demand = await self._apply_to_devices(opts, main_target, bed_target)
-        zone_targets, zone_demand = self._evaluate_zones(
-            opts, main_target, bed_target
-        )
-        demand.extend(zone_demand)
         # Worst shortfall first: that is the one setting the power level, and
         # the one worth seeing at the top of a breakdown.
         demand.sort(key=lambda row: row["diff"], reverse=True)
@@ -284,7 +274,6 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "bed_phase": bed_phase,
             "main_target": main_target,
             "bed_target": bed_target,
-            "zone_targets": zone_targets,
             "demand": demand,
             "boiler": boiler_state,
         }
@@ -304,22 +293,9 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         summer = bool(opts.get(OPT_BOILER_SUMMER, False))
         demand: list[dict[str, Any]] = []
         tasks = []
-        own_zones = self._own_zone_entities()
 
         for dev in opts.get(OPT_DEVICES, []) or []:
             entity_id: str = dev[DEV_ENTITY_ID]
-
-            if entity_id in own_zones:
-                # One of our own zones, listed as a tracked device as well.
-                # Older documentation asked for exactly that, and it drives the
-                # zone twice from two different offsets. The zone config wins.
-                _LOGGER.warning(
-                    "%s is a zone of this integration and is also listed as a "
-                    "tracked device; ignoring the device entry. Remove it under "
-                    "Configure to silence this.",
-                    entity_id,
-                )
-                continue
 
             state = self.hass.states.get(entity_id)
             if state is None or state.state in _UNUSABLE:
@@ -358,56 +334,6 @@ class HeatingScheduleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.warning("set_temperature failed: %s", r)
 
         return demand
-
-    def _own_zone_entities(self) -> set[str]:
-        """Climate entities this integration publishes for its own zones."""
-        registry = er.async_get(self.hass)
-        return {
-            entity.entity_id
-            for entity in er.async_entries_for_config_entry(
-                registry, self.entry.entry_id
-            )
-            if entity.domain == "climate"
-        }
-
-    def _evaluate_zones(
-        self, opts: dict, main_target: float, bed_target: float
-    ) -> tuple[dict[str, float], list[dict[str, Any]]]:
-        """Target and shortfall for every zone this integration owns.
-
-        Zones are driven from here rather than through a service call to our own
-        climate entities: the entity reads its target straight out of the
-        coordinator data.
-        """
-        targets: dict[str, float] = {}
-        demand: list[dict[str, Any]] = []
-        summer = bool(opts.get(OPT_BOILER_SUMMER, False))
-
-        for branch in opts.get(OPT_BRANCHES, []) or []:
-            branch_id = branch.get(BRANCH_ID)
-            if not branch_id:
-                continue
-            base = bed_target if branch.get(BRANCH_IS_BEDROOM) else main_target
-            target = _with_offset(base, branch.get(BRANCH_OFFSET, 0.0))
-            targets[branch_id] = target
-
-            if summer:
-                continue
-            ambient = read_min_temperature(
-                self.hass, branch.get(BRANCH_SENSORS) or []
-            )
-            if ambient is not None:
-                demand.append(
-                    _demand_row(
-                        branch_id,
-                        branch.get(BRANCH_NAME) or branch_id,
-                        target,
-                        ambient,
-                    )
-                )
-
-        return targets, demand
-
 
 def _as_float(value: Any) -> float | None:
     try:

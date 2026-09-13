@@ -12,8 +12,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -35,8 +34,6 @@ from .const import (
     BRANCH_MIN_CYCLE_S,
     BRANCH_NAME,
     BRANCH_PUMP,
-    BRANCH_IS_BEDROOM,
-    BRANCH_OFFSET,
     BRANCH_SENSORS,
     BRANCH_TRAVEL_S,
     DEFAULTS,
@@ -147,22 +144,6 @@ def _seconds_selector(minimum: int, maximum: int, step: int) -> NumberSelector:
     )
 
 
-def _own_zone_entities(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
-    """Climate entities this integration publishes for its own zones.
-
-    A zone already receives its target straight from the coordinator. Listing
-    one among the tracked devices as well drives it twice, from two different
-    offsets, and whichever call lands last wins -- which reads exactly like an
-    offset being ignored.
-    """
-    registry = er.async_get(hass)
-    return [
-        entity.entity_id
-        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
-        if entity.domain == "climate"
-    ]
-
-
 def _branch_schema(
     current: dict[str, Any], *, with_remove: bool, with_hardware: bool
 ) -> vol.Schema:
@@ -178,12 +159,6 @@ def _branch_schema(
                 domain="sensor", device_class="temperature", multiple=True
             )
         ),
-        vol.Required(
-            BRANCH_OFFSET, default=current.get(BRANCH_OFFSET, 0.0)
-        ): _offset_selector(),
-        vol.Required(
-            BRANCH_IS_BEDROOM, default=current.get(BRANCH_IS_BEDROOM, False)
-        ): BooleanSelector(),
     }
     if with_hardware:
         fields.update(
@@ -259,8 +234,6 @@ def _branch_from_input(
         BRANCH_ID: branch_id,
         BRANCH_NAME: user_input[BRANCH_NAME],
         BRANCH_SENSORS: list(user_input.get(BRANCH_SENSORS) or []),
-        BRANCH_OFFSET: float(user_input.get(BRANCH_OFFSET, 0.0)),
-        BRANCH_IS_BEDROOM: bool(user_input.get(BRANCH_IS_BEDROOM, False)),
         BRANCH_ACTUATOR: base.get(BRANCH_ACTUATOR),
         BRANCH_PUMP: base.get(BRANCH_PUMP),
         BRANCH_HYSTERESIS: base.get(BRANCH_HYSTERESIS, DEFAULT_HYSTERESIS),
@@ -378,45 +351,31 @@ class HeatingScheduleOptionsFlow(OptionsFlow):
     async def async_step_add_device(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        own_zones = _own_zone_entities(self.hass, self._entry)
-
-        errors: dict[str, str] = {}
         if user_input is not None:
             entity_id = user_input[DEV_ENTITY_ID]
-            if entity_id in own_zones:
-                # Already driven from the coordinator; adding it here would
-                # drive it a second time with a different offset.
-                errors[DEV_ENTITY_ID] = "own_zone"
-            else:
-                existing = [
-                    d
-                    for d in self._draft[OPT_DEVICES]
-                    if d[DEV_ENTITY_ID] != entity_id
-                ]
-                existing.append(
-                    {
-                        DEV_ENTITY_ID: entity_id,
-                        DEV_OFFSET: float(user_input[DEV_OFFSET]),
-                        DEV_IS_BEDROOM: bool(user_input[DEV_IS_BEDROOM]),
-                    }
-                )
-                self._draft[OPT_DEVICES] = existing
-                return await self._async_save_and_finish()
+            existing = [
+                d for d in self._draft[OPT_DEVICES] if d[DEV_ENTITY_ID] != entity_id
+            ]
+            existing.append(
+                {
+                    DEV_ENTITY_ID: entity_id,
+                    DEV_OFFSET: float(user_input[DEV_OFFSET]),
+                    DEV_IS_BEDROOM: bool(user_input[DEV_IS_BEDROOM]),
+                }
+            )
+            self._draft[OPT_DEVICES] = existing
+            return await self._async_save_and_finish()
 
         schema = vol.Schema(
             {
                 vol.Required(DEV_ENTITY_ID): EntitySelector(
-                    EntitySelectorConfig(
-                        domain="climate", exclude_entities=own_zones
-                    )
+                    EntitySelectorConfig(domain="climate")
                 ),
                 vol.Required(DEV_OFFSET, default=0.0): _offset_selector(),
                 vol.Required(DEV_IS_BEDROOM, default=False): BooleanSelector(),
             }
         )
-        return self.async_show_form(
-            step_id="add_device", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="add_device", data_schema=schema)
 
     # ------------------------------------------------------------ edit_devices
 
